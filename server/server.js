@@ -1,43 +1,63 @@
 const express = require("express");
 const connect = require("./config/db");
 const userController = require("./controllers/user");
+const leaveController = require("./controllers/leaveRequest");
 const authenticate = require("./middleware/authenticate");
-const resturant = require("./controllers/restaurant");
-const category = require("./controllers/category")
-const menu = require("./controllers/menu")
-const order = require("./controllers/order")
+const cors = require("cors");
 const app = express();
 
 app.use(express.json());
 
+app.use(express.urlencoded({ extended: true }));
+
+// Use CORS middleware
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    credentials: true,
+  })
+);
+
 app.get("/", authenticate, async (req, res) => {
-  return res.send({ message: "Hello baby" });
+  return res.send({ message: "Hello" });
 });
-
-//resturant api
-app.post("/resturant", authenticate, resturant.createResturant);
-app.get("/resturant", authenticate, resturant.listResturant);
-
-app.post("/category", authenticate, category.createCategory);
-app.get("/category/:restaurantId", authenticate, category.getCategoriesByRestaurant);
-
-//menu
-app.post("/menu", authenticate, menu.createItem);
-app.get("/menu/:categoryId/:restaurantId", authenticate, menu.getMenusByCategoryAndRestaurant);
-app.get("/menu", authenticate, menu.listAllItems);
-app.get("/menu/:name", authenticate, menu.searchItemsByName);
-
-
-//order
-app.post("/order", authenticate, order.createOrder);
-app.get("/orders/restaurant", authenticate, order.getOrdersForUserRestaurant);
 
 //user
 app.post("/users", userController.createUser);
 app.post("/login", userController.login);
+app.post("/request-leave", authenticate, leaveController.registerLeaveRequest);
+app.get(
+  "/admin/leave-requests/pending",
+  authenticate,
+  leaveController.getPendingLeaveRequests
+);
 
+app.put(
+  "/admin/leave-requests/:leaveId",
+  authenticate,
+  leaveController.updateLeaveStatus
+);
+
+app.patch(
+  "/admin/leave-status/:leaveId",
+  authenticate,
+  leaveController.updateStatus
+);
+
+app.get(
+  "/admin/employees/",
+  authenticate,
+  userController.getAllEmployeesWithLeaveHistory
+);
+
+app.get(
+  "/employee-details/",
+  authenticate,
+  userController.getEmployeeWithLeaveHistory
+);
 // Server creation and database connection
-app.listen(3001, async () => {
+app.listen(3001, "172.30.60.22", async () => {
   try {
     await connect();
     console.log("Connected to MongoDB");

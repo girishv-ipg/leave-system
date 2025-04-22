@@ -1,8 +1,10 @@
 const mongoose = require("mongoose");
 
 const connect = () => {
-  return mongoose.connect(
-    "mongodb+srv://girisha:8762331996@cluster0.51hylkq.mongodb.net/swiggy?retryWrites=true&w=majority"
-  );
+  return mongoose.connect("mongodb://127.0.0.1:27017/leaveSystem", {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  });
 };
+
 module.exports = connect;
