@@ -2,7 +2,7 @@ import axios from "axios";
 
 // Create an Axios instance
 const axiosInstance = axios.create({
-  baseURL: "http://172.30.60.22:3001", // Your local server's base URL
+  baseURL: "http://localhost:3001", // Your local server's base URL
   timeout: 10000, // Request timeout in ms
   headers: {
     "Content-Type": "application/json", // Ensure you're sending JSON data

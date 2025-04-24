@@ -57,7 +57,7 @@ app.get(
   userController.getEmployeeWithLeaveHistory
 );
 // Server creation and database connection
-app.listen(3001, "172.30.60.22", async () => {
+app.listen(3001, "", async () => {
   try {
     await connect();
     console.log("Connected to MongoDB");

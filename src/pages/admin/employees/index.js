@@ -7,6 +7,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   Paper,
   Stack,
   Table,
@@ -15,15 +16,19 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Tooltip,
   Typography,
 } from "@mui/material";
+import { Delete, Edit, Visibility } from "@mui/icons-material";
 import axiosInstance, { formatDate } from "@/utils/helpers";
 import { useEffect, useState } from "react";
 
 import AdminLayout from "..";
+import { useRouter } from "next/router";
 import withAdminAuth from "@/pages/auth/Authentication";
 
 const EmployeeList = () => {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [employees, setEmployees] = useState([]);
@@ -36,6 +41,32 @@ const EmployeeList = () => {
   const handleClose = () => {
     setOpen(false);
     setSelectedEmployee(null);
+  };
+
+  const handleEdit = (employee) => {
+    // Navigate to register page with employee data
+    router.push({
+      pathname: "/admin/register",
+      query: { edit: true, id: employee._id },
+    });
+    // We'll store the employee data in localStorage to access it in the register page
+    localStorage.setItem("editEmployee", JSON.stringify(employee));
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm("Are you sure you want to delete this employee?")) {
+      try {
+        await axiosInstance.delete(`/admin/employees/${id}`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        });
+        // Refresh employee list after deletion
+        getEmployees();
+      } catch (error) {
+        console.error("Error deleting employee:", error);
+      }
+    }
   };
 
   const getEmployees = async () => {
@@ -90,7 +121,7 @@ const EmployeeList = () => {
                 <TableCell>Leave Taken</TableCell>
                 <TableCell>Leave Balance</TableCell>
                 <TableCell>Total Leave Quota</TableCell>
-                <TableCell>Action</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -99,14 +130,38 @@ const EmployeeList = () => {
                   <TableCell>{emp.name}</TableCell>
                   <TableCell>{emp.employeeCode}</TableCell>
                   <TableCell>
-                    {Number(emp.totalLeaveQuota) - Number(emp.leaveBalance) || 0}
+                    {Number(emp.totalLeaveQuota) - Number(emp.leaveBalance) ||
+                      0}
                   </TableCell>
-                  <TableCell>{emp.leaveBalance || '--'}</TableCell>
+                  <TableCell>{emp.leaveBalance || "--"}</TableCell>
                   <TableCell>{emp.totalLeaveQuota}</TableCell>
                   <TableCell>
-                    <Button variant="outlined" onClick={() => handleOpen(emp)}>
-                      View Details
-                    </Button>
+                    <Stack direction="row" spacing={1}>
+                      <Tooltip title="View Details">
+                        <IconButton
+                          color="primary"
+                          onClick={() => handleOpen(emp)}
+                        >
+                          <Visibility />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Edit">
+                        <IconButton
+                          color="info"
+                          onClick={() => handleEdit(emp)}
+                        >
+                          <Edit />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete">
+                        <IconButton
+                          color="error"
+                          onClick={() => handleDelete(emp._id)}
+                        >
+                          <Delete />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
                   </TableCell>
                 </TableRow>
               ))}
