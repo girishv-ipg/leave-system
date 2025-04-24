@@ -25,7 +25,8 @@ const LoginPage = () => {
 
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user"));
-    if (user?.role === "admin") {
+    console.log(user, "user");
+    if (["admin", "manager"].includes(user?.role)) {
       router.replace("/admin/requests");
     } else if (user?.role === "employee") {
       router.replace("/employee/requestLeave");
@@ -59,7 +60,7 @@ const LoginPage = () => {
       localStorage.setItem("user", JSON.stringify(user));
       localStorage.setItem("token", token);
 
-      if (user.role === "admin") {
+      if (["admin", "manager"].includes(user?.role)) {
         router.push("/admin/requests");
       } else {
         router.push("/employee/requestLeave");

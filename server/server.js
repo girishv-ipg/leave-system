@@ -25,6 +25,7 @@ app.get("/", authenticate, async (req, res) => {
 
 //user
 app.post("/users", userController.createUser);
+app.put("/update-user/:id", userController.updateUser);
 app.post("/login", userController.login);
 app.post("/request-leave", authenticate, leaveController.registerLeaveRequest);
 app.get(
@@ -32,6 +33,9 @@ app.get(
   authenticate,
   leaveController.getPendingLeaveRequests
 );
+
+app.get("/admin/user/:id", authenticate, userController.getUserById);
+app.delete("/admin/user/:id", authenticate, userController.deleteUserById);
 
 app.put(
   "/admin/leave-requests/:leaveId",

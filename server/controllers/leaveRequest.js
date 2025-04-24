@@ -78,15 +78,46 @@ const registerLeaveRequest = async (req, res) => {
   }
 };
 
+// const getPendingLeaveRequests = async (req, res) => {
+//   try {
+//     // Get today's date at midnight
+//     const today = new Date();
+//     today.setHours(0, 0, 0, 0);
+
+//     // Get tomorrow to define range for "today"
+
+//     const pendingOrUpcomingLeaves = await Leave.find({
+//       status: {
+//         $in: [
+//           "pending",
+//           "approved",
+//           "cancelled",
+//           "rejected",
+//           "withdrawal-requested",
+//         ],
+//       },
+//       startDate: { $gte: today }, // Today or future only
+//     })
+//       .populate("user", "name employeeCode designation gender role status")
+//       .sort({ createdAt: -1 });
+
+//     res.status(200).json({
+//       message: "Pending and today's leave requests fetched successfully",
+//       data: pendingOrUpcomingLeaves,
+//     });
+//   } catch (error) {
+//     console.error("Error fetching leaves:", error);
+//     res.status(500).json({ error: "Internal server error" });
+//   }
+// };
+
 const getPendingLeaveRequests = async (req, res) => {
   try {
-    // Get today's date at midnight
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Get tomorrow to define range for "today"
-
-    const pendingOrUpcomingLeaves = await Leave.find({
+    // Base query: filter by status and startDate
+    const baseQuery = {
       status: {
         $in: [
           "pending",
@@ -96,13 +127,33 @@ const getPendingLeaveRequests = async (req, res) => {
           "withdrawal-requested",
         ],
       },
-      startDate: { $gte: today }, // Today or future only
-    })
-      .populate("user", "name employeeCode designation gender role status")
+      startDate: { $gte: today },
+    };
+
+    let user = await User.findById(req.user.userId).exec();
+
+    let department = user.department;
+    // If manager, filter further by user role and department
+    if (user.role === "manager") {
+      // First, get all users in the same department who are employees
+      const departmentEmployees = await User.find({
+        department,
+      }).select("_id");
+
+      const employeeIds = departmentEmployees.map((emp) => emp._id);
+      baseQuery.user = { $in: employeeIds };
+    }
+
+    // Run query
+    const pendingOrUpcomingLeaves = await Leave.find(baseQuery)
+      .populate(
+        "user",
+        "name employeeCode designation gender role status department"
+      )
       .sort({ createdAt: -1 });
 
     res.status(200).json({
-      message: "Pending and today's leave requests fetched successfully",
+      message: "Pending and upcoming leave requests fetched successfully",
       data: pendingOrUpcomingLeaves,
     });
   } catch (error) {
@@ -110,67 +161,6 @@ const getPendingLeaveRequests = async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 };
-
-// const updateLeaveStatus = async (req, res) => {
-//   try {
-//     const { leaveId } = req.params;
-//     const { status, adminNote } = req.body;
-
-//     if (
-//       !["approved", "rejected", "withdrawal-requested", "cancelled"].includes(
-//         status
-//       )
-//     ) {
-//       return res.status(400).json({ error: "Invalid status value" });
-//     }
-
-//     const leave = await Leave.findById(leaveId).populate("user");
-
-//     if (!leave) {
-//       return res.status(404).json({ error: "Leave request not found" });
-//     }
-
-//     if (leave.status !== "pending") {
-//       return res
-//         .status(400)
-//         .json({ error: "Leave request has already been reviewed" });
-//     }
-
-//     leave.status = status;
-//     leave.adminNote = adminNote || "";
-//     leave.reviewedBy = req.user.userId;
-//     leave.reviewedOn = new Date();
-
-//     // If approved, update leave balance
-//     if (status === "approved") {
-//       const user = await User.findById(leave.user._id);
-
-//       let days = 1;
-
-//       if (leave.leaveDuration === "half-day") {
-//         days = 0.5;
-//       } else {
-//         const start = new Date(leave.startDate);
-//         const end = new Date(leave.endDate);
-//         const diffTime = Math.abs(end - start);
-//         days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // inclusive
-//       }
-
-//       user.leaveBalance = (user.leaveBalance || 0) - days;
-
-//       if (user.leaveBalance < 0) user.leaveBalance = 0; // prevent negative
-
-//       await user.save();
-//     }
-
-//     await leave.save();
-
-//     res.status(200).json({ message: `Leave ${status} successfully`, leave });
-//   } catch (error) {
-//     console.error("Error updating leave status:", error);
-//     res.status(500).json({ error: "Internal server error" });
-//   }
-// };
 
 const updateLeaveStatus = async (req, res) => {
   try {
@@ -190,8 +180,6 @@ const updateLeaveStatus = async (req, res) => {
     if (!leave) {
       return res.status(404).json({ error: "Leave request not found" });
     }
-
-  
 
     leave.status = status;
     leave.adminNote = adminNote || "";
@@ -222,9 +210,9 @@ const updateLeaveStatus = async (req, res) => {
 
     if (status === "cancelled") {
       const user = await User.findById(leave.user._id);
-    
+
       let days = 1;
-    
+
       if (leave.leaveDuration === "half-day") {
         days = 0.5;
       } else {
@@ -233,14 +221,13 @@ const updateLeaveStatus = async (req, res) => {
         const diffTime = Math.abs(end - start);
         days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // inclusive
       }
-    
+
       // ✅ Add back leave balance and subtract from leaveTaken
       user.leaveBalance = (user.leaveBalance || 0) + days;
       user.leaveTaken = Math.max((user.leaveTaken || 0) - days, 0);
-    
+
       await user.save();
     }
-    
 
     await leave.save();
 

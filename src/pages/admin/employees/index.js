@@ -56,7 +56,7 @@ const EmployeeList = () => {
   const handleDelete = async (id) => {
     if (window.confirm("Are you sure you want to delete this employee?")) {
       try {
-        await axiosInstance.delete(`/admin/employees/${id}`, {
+        await axiosInstance.delete(`/admin/user/${id}`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
@@ -77,7 +77,6 @@ const EmployeeList = () => {
         },
       });
 
-      console.log(response?.data?.data, "response");
       setEmployees(response.data.data);
     } catch (error) {
       console.error("Error fetching leave requests:", error);
@@ -118,6 +117,8 @@ const EmployeeList = () => {
               <TableRow>
                 <TableCell>Name</TableCell>
                 <TableCell>Employee ID</TableCell>
+                <TableCell>Department</TableCell>
+                <TableCell>Role</TableCell>
                 <TableCell>Leave Taken</TableCell>
                 <TableCell>Leave Balance</TableCell>
                 <TableCell>Total Leave Quota</TableCell>
@@ -127,8 +128,16 @@ const EmployeeList = () => {
             <TableBody>
               {employees.map((emp) => (
                 <TableRow key={emp._id}>
-                  <TableCell>{emp.name}</TableCell>
+                  <TableCell sx={{ textTransform: "capitalize" }}>
+                    {emp.name}
+                  </TableCell>
                   <TableCell>{emp.employeeCode}</TableCell>
+                  <TableCell sx={{ textTransform: "capitalize" }}>
+                    {emp.department}
+                  </TableCell>
+                  <TableCell sx={{ textTransform: "capitalize" }}>
+                    {emp.role}
+                  </TableCell>
                   <TableCell>
                     {Number(emp.totalLeaveQuota) - Number(emp.leaveBalance) ||
                       0}
@@ -251,4 +260,4 @@ const EmployeeList = () => {
   );
 };
 
-export default withAdminAuth(EmployeeList, ["admin"]);
+export default withAdminAuth(EmployeeList, ["admin", "manager"]);
