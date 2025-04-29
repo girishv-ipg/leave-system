@@ -2,6 +2,8 @@ const express = require("express");
 const connect = require("./config/db");
 const userController = require("./controllers/user");
 const leaveController = require("./controllers/leaveRequest");
+const User = require("./models/user");
+const Leave = require("./models/leave");
 const authenticate = require("./middleware/authenticate");
 const cors = require("cors");
 const app = express();
@@ -63,10 +65,14 @@ app.get(
 
 app.put("/update-password", authenticate, userController.updateUserPassword);
 // Server creation and database connection
-app.listen(3001, async () => {
+app.listen(4000, async () => {
   try {
     await connect();
     console.log("Connected to MongoDB");
+    // 👇 Force collection creation here
+    await User.init();
+    await Leave.init();
+    console.log("User and Leave models initialized");
   } catch (err) {
     console.error("Error connecting to MongoDB:", err);
   }
