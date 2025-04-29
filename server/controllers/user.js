@@ -5,7 +5,7 @@ const Validator = require("validatorjs");
 const jwt = require("jsonwebtoken");
 
 const SALT_ROUNDS = 10;
-const SECRET_KEY = "girishv";
+const SECRET_KEY = "ipg-automotive";
 
 // Register a new user
 const createUser = async (req, res) => {
@@ -260,8 +260,6 @@ const login = async (req, res) => {
 
 const getAllEmployeesWithLeaveHistory = async (req, res) => {
   try {
-    const loggedInUser = req.user;
-
     let user = await User.findById(req.user.userId);
 
     let employeeQuery = {};
@@ -345,6 +343,56 @@ const getUserById = async (req, res) => {
   }
 };
 
+const updateUserPassword = async (req, res) => {
+  try {
+    const { password } = req.body;
+
+    if (!password || password === "") {
+      return res.status(400).json({ error: "Password is required" });
+    }
+
+    if (password.length < 8) {
+      return res
+        .status(400)
+        .json({ error: "Password must be at least 8 characters long" });
+    }
+
+    // Find the user by ID
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Check if new password is same as old password
+    const isSamePassword = await bcrypt.compare(
+      password.password,
+      user.password
+    );
+    if (isSamePassword) {
+      return res.status(400).json({
+        error: "New password must be different from the old password",
+      });
+    }
+
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(
+      password.password.trim(),
+      SALT_ROUNDS
+    );
+
+    // Update password and save
+    user.password = hashedPassword;
+    await user.save();
+
+    return res.status(200).json({
+      message: "Password updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating password:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 module.exports = {
   createUser,
   updateUser,
@@ -353,4 +401,5 @@ module.exports = {
   getEmployeeWithLeaveHistory,
   getUserById,
   deleteUserById,
+  updateUserPassword,
 };

@@ -25,13 +25,13 @@ const LoginPage = () => {
 
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user"));
-    console.log(user, "user");
+
     if (["admin", "manager"].includes(user?.role)) {
       router.replace("/admin/requests");
     } else if (user?.role === "employee") {
       router.replace("/employee/requestLeave");
     }
-  }, []);
+  }, [router]);
 
   const handleChange = (e) => {
     setErrors({});

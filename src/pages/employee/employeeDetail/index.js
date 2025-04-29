@@ -23,47 +23,6 @@ import { useEffect, useState } from "react";
 import AdminLayout from "..";
 import withAdminAuth from "@/pages/auth/Authentication";
 
-const employees = [
-  {
-    id: "EMP001",
-    name: "Alice Johnson",
-    leaveTaken: 5,
-    leaveBalance: 7,
-    department: "HR",
-    joiningDate: "2021-04-01",
-    history: [
-      {
-        from: "2025-03-01",
-        to: "2025-03-03",
-        reason: "Medical",
-        status: "Approved",
-        type: "Sick Leave",
-        days: 3,
-        comment: "Doctor note submitted",
-      },
-    ],
-  },
-  {
-    id: "EMP002",
-    name: "Bob Smith",
-    leaveTaken: 3,
-    leaveBalance: 9,
-    department: "Engineering",
-    joiningDate: "2022-01-15",
-    history: [
-      {
-        from: "2025-02-10",
-        to: "2025-02-11",
-        reason: "Family Function",
-        status: "Denied",
-        type: "Casual Leave",
-        days: 2,
-        comment: "Project deadline",
-      },
-    ],
-  },
-];
-
 const EmployeeList = () => {
   const [open, setOpen] = useState(false);
 
@@ -234,7 +193,10 @@ const EmployeeList = () => {
                       isFutureLeave(leave.startDate) && (
                         <Button
                           onClick={() =>
-                            handleUpdateStatus(leave._id, "withdrawal-requested")
+                            handleUpdateStatus(
+                              leave._id,
+                              "withdrawal-requested"
+                            )
                           }
                         >
                           Request Withdrawal

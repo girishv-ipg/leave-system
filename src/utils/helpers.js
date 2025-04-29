@@ -2,10 +2,10 @@ import axios from "axios";
 
 // Create an Axios instance
 const axiosInstance = axios.create({
-  baseURL: "http://localhost:3001", // Your local server's base URL
-  timeout: 10000, // Request timeout in ms
+  baseURL: process.env.NEXT_PUBLIC_APP_URL,
+  timeout: 10000,
   headers: {
-    "Content-Type": "application/json", // Ensure you're sending JSON data
+    "Content-Type": "application/json",
   },
 });
 

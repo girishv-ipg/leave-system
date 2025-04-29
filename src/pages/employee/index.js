@@ -1,6 +1,7 @@
 // app/admin/layout.tsx
 "use client";
 
+import { Alert, Snackbar } from "@mui/material";
 import {
   AppBar,
   Avatar,
@@ -19,6 +20,7 @@ import { useEffect, useState } from "react";
 import KeyIcon from "@mui/icons-material/Key";
 import Link from "next/link";
 import LogoutIcon from "@mui/icons-material/Logout";
+import axiosInstance from "@/utils/helpers";
 
 export default function EmployeeLayout({ children }) {
   const handleLogout = () => {
@@ -34,6 +36,9 @@ export default function EmployeeLayout({ children }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState("");
+  const [snackbarSeverity, setSnackbarSeverity] = useState("success");
 
   useEffect(() => {
     // Only runs on the client
@@ -71,22 +76,78 @@ export default function EmployeeLayout({ children }) {
     setConfirmPassword("");
   };
 
-  const handleChangePassword = () => {
-    // Validate passwords
-    if (!currentPassword || !newPassword || !confirmPassword) {
+  // const handleChangePassword = async () => {
+  //   // Validate passwords
+  //   if (!newPassword || !confirmPassword) {
+  //     alert("All fields are required");
+  //     return;
+  //   }
+
+  //   if (newPassword !== confirmPassword) {
+  //     alert("New passwords doesn't match");
+  //     return;
+  //   }
+
+  //   // Here you would typically make an API call to change the password
+  //   // For now, we'll just simulate success
+
+  //   let password = {
+  //     password: newPassword,
+  //   };
+
+  //   try {
+  //     let res = await axiosInstance.put(
+  //       "/update-password",
+  //       {
+  //         headers: {
+  //           Authorization: `Bearer ${localStorage.getItem("token")}`,
+  //         },
+  //       },
+  //       password
+  //     );
+
+  //     alert("Password changed successfully!");
+  //     handleCloseModal();
+  //   } catch {}
+  // };
+
+  const handleChangePassword = async (e) => {
+    if (!newPassword || !confirmPassword) {
       alert("All fields are required");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      alert("New passwords don't match");
+      alert("New passwords doesn't match");
       return;
     }
+    try {
+      const user = JSON.parse(localStorage.getItem("user"));
+      const token = localStorage.getItem("token");
 
-    // Here you would typically make an API call to change the password
-    // For now, we'll just simulate success
-    alert("Password changed successfully!");
-    handleCloseModal();
+      let password = {
+        password: newPassword,
+      };
+
+      const res = await axiosInstance.put(
+        "/update-password",
+        {
+          password,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      setSnackbarSeverity("success");
+      setSnackbarMessage("Password updated successfully!");
+      setSnackbarOpen(true);
+    } catch (err) {
+      console.error(err);
+    } finally {
+    }
   };
 
   const modalStyle = {
@@ -185,18 +246,10 @@ export default function EmployeeLayout({ children }) {
           >
             Change password
           </Typography>
-          <TextField
-            label="Current password"
-            type="password"
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-            fullWidth
-            required
-            margin="normal"
-          />
+
           <TextField
             label="New password"
-            type="password"
+            type="text"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             fullWidth
@@ -205,7 +258,7 @@ export default function EmployeeLayout({ children }) {
           />
           <TextField
             label="Confirm new password"
-            type="password"
+            type="text"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             fullWidth
@@ -232,6 +285,25 @@ export default function EmployeeLayout({ children }) {
       >
         {children}
       </Box>
+
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={4000}
+        onClose={() => {
+          setSnackbarOpen(false);
+        }}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => {
+            setSnackbarOpen(false);
+          }}
+          severity={snackbarSeverity}
+          sx={{ width: "100%" }}
+        >
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

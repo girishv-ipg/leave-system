@@ -12,12 +12,11 @@ const seedAdmin = async () => {
     const hashedPassword = await bcrypt.hash("admin1234", 10);
 
     const adminUser = new User({
-      name: "Admin User",
-      employeeCode: "EMP0001",
+      name: "Admin",
+      employeeCode: "admin1234",
       email: "admin@example.com",
       password: hashedPassword,
       role: "admin",
-      gender: "male",
       designation: "Administrator",
       totalLeaveQuota: 30,
     });

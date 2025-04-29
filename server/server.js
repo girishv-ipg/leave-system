@@ -60,8 +60,10 @@ app.get(
   authenticate,
   userController.getEmployeeWithLeaveHistory
 );
+
+app.put("/update-password", authenticate, userController.updateUserPassword);
 // Server creation and database connection
-app.listen(3001, "", async () => {
+app.listen(3001, async () => {
   try {
     await connect();
     console.log("Connected to MongoDB");
