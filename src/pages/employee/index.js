@@ -144,6 +144,7 @@ export default function EmployeeLayout({ children }) {
       setSnackbarSeverity("success");
       setSnackbarMessage("Password updated successfully!");
       setSnackbarOpen(true);
+      handleLogout();
     } catch (err) {
       console.error(err);
     } finally {
