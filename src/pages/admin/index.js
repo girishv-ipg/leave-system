@@ -9,17 +9,26 @@ import {
   Toolbar,
   Typography,
 } from "@mui/material";
+import { useEffect, useState } from "react";
 
 import Link from "next/link";
 import LogoutIcon from "@mui/icons-material/Logout";
 
 export default function AdminLayout({ children }) {
-  
+  const [name, setName] = useState("Admin");
   const handleLogout = () => {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
     window.location.href = "/";
   };
+
+  useEffect(() => {
+    // Only runs on the client
+    const user = JSON.parse(localStorage.getItem("user"));
+    if (user?.name) {
+      setName(user.name);
+    }
+  }, []);
 
   return (
     <Box
@@ -33,7 +42,7 @@ export default function AdminLayout({ children }) {
       <AppBar sx={{ height: "64px" }} position="static">
         <Toolbar>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            Admin Dashboard
+            Hi, {name}
           </Typography>
 
           <Button color="inherit" component={Link} href="/admin/requests">
@@ -46,6 +55,14 @@ export default function AdminLayout({ children }) {
             Register Employee
           </Button>
 
+          <Button color="inherit" component={Link} href="/admin/requestLeave">
+            Request Leave
+          </Button>
+
+          <Button color="inherit" component={Link} href="/admin/details">
+            My Leave Overview
+          </Button>
+
           <IconButton color="inherit" onClick={handleLogout}>
             <LogoutIcon />
           </IconButton>
@@ -54,7 +71,7 @@ export default function AdminLayout({ children }) {
 
       <Box
         sx={{
-          flexGrow: 1, 
+          flexGrow: 1,
           overflowY: "auto",
           p: 2,
         }}

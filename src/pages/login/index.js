@@ -29,7 +29,7 @@ const LoginPage = () => {
     if (["admin", "manager"].includes(user?.role)) {
       router.replace("/admin/requests");
     } else if (user?.role === "employee") {
-      router.replace("/employee/requestLeave");
+      router.replace("/employee/employeeDetail");
     }
   }, [router]);
 
@@ -63,7 +63,7 @@ const LoginPage = () => {
       if (["admin", "manager"].includes(user?.role)) {
         router.push("/admin/requests");
       } else {
-        router.push("/employee/requestLeave");
+        router.push("/employee/employeeDetail");
       }
     } catch (error) {
       const msg =

@@ -46,7 +46,6 @@ const EmployeeList = () => {
         },
       });
 
-      console.log(response?.data?.data, "response");
       setEmployee(response.data.data);
     } catch (error) {
       console.error("Error fetching leave requests:", error);
@@ -216,4 +215,4 @@ const EmployeeList = () => {
   );
 };
 
-export default withAdminAuth(EmployeeList, ["employee"]);
+export default withAdminAuth(EmployeeList, ["manager", "admin"]);

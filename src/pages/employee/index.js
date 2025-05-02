@@ -76,41 +76,6 @@ export default function EmployeeLayout({ children }) {
     setConfirmPassword("");
   };
 
-  // const handleChangePassword = async () => {
-  //   // Validate passwords
-  //   if (!newPassword || !confirmPassword) {
-  //     alert("All fields are required");
-  //     return;
-  //   }
-
-  //   if (newPassword !== confirmPassword) {
-  //     alert("New passwords doesn't match");
-  //     return;
-  //   }
-
-  //   // Here you would typically make an API call to change the password
-  //   // For now, we'll just simulate success
-
-  //   let password = {
-  //     password: newPassword,
-  //   };
-
-  //   try {
-  //     let res = await axiosInstance.put(
-  //       "/update-password",
-  //       {
-  //         headers: {
-  //           Authorization: `Bearer ${localStorage.getItem("token")}`,
-  //         },
-  //       },
-  //       password
-  //     );
-
-  //     alert("Password changed successfully!");
-  //     handleCloseModal();
-  //   } catch {}
-  // };
-
   const handleChangePassword = async (e) => {
     if (!newPassword || !confirmPassword) {
       alert("All fields are required");
@@ -175,8 +140,16 @@ export default function EmployeeLayout({ children }) {
       <AppBar sx={{ height: "64px" }} position="static">
         <Toolbar>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            Hi {name}, Welcome to Employee Portal
+            Hi {name}, Welcome
           </Typography>
+
+          <Button
+            color="inherit"
+            component={Link}
+            href="/employee/employeeDetail"
+          >
+            Details
+          </Button>
 
           <Button
             color="inherit"
@@ -185,13 +158,7 @@ export default function EmployeeLayout({ children }) {
           >
             Leave Request
           </Button>
-          <Button
-            color="inherit"
-            component={Link}
-            href="/employee/employeeDetail"
-          >
-            Details
-          </Button>
+
           <Avatar
             sx={{
               bgcolor: "#e0e0e0",

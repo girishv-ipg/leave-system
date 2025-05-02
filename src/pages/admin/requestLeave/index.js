@@ -9,10 +9,11 @@ import {
   Typography,
 } from "@mui/material";
 
-import EmployeeLayout from "..";
+import AdminLayout from "..";
 import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import withAdminAuth from "@/pages/auth/Authentication";
 
 const initialForm = {
   startDate: "",
@@ -68,7 +69,7 @@ const LeaveRequestForm = () => {
   };
 
   return (
-    <EmployeeLayout>
+    <AdminLayout>
       <Container maxWidth="sm" sx={{ mt: 4 }}>
         <Paper sx={{ p: 4 }}>
           <Typography variant="h5" gutterBottom>
@@ -165,8 +166,8 @@ const LeaveRequestForm = () => {
           </form>
         </Paper>
       </Container>
-    </EmployeeLayout>
+    </AdminLayout>
   );
 };
 
-export default LeaveRequestForm;
+export default withAdminAuth(LeaveRequestForm, ["admin", "manager"]);
