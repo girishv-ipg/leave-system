@@ -85,9 +85,6 @@ const LeaveRequestForm = () => {
                 onChange={handleChange}
                 InputLabelProps={{ shrink: true }}
                 required
-                inputProps={{
-                  min: new Date().toISOString().split("T")[0], // Set today's date as minimum
-                }}
               />
               <TextField
                 label="End Date"
@@ -97,8 +94,9 @@ const LeaveRequestForm = () => {
                 onChange={handleChange}
                 InputLabelProps={{ shrink: true }}
                 required
+                disabled={!form.startDate}
                 inputProps={{
-                  min: new Date().toISOString().split("T")[0], // Set today's date as minimum
+                  min: form.startDate, // Set today's date as minimum
                 }}
               />
               <TextField

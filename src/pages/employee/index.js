@@ -77,17 +77,20 @@ export default function EmployeeLayout({ children }) {
   };
 
   const handleChangePassword = async (e) => {
-    if (!newPassword || !confirmPassword) {
-      alert("All fields are required");
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      alert("New passwords doesn't match");
-      return;
-    }
     try {
-      const user = JSON.parse(localStorage.getItem("user"));
+      if (!newPassword || !confirmPassword) {
+        alert("All fields are required");
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        alert("New passwords doesn't match");
+        return;
+      }
+      if (newPassword.length < 8 && confirmPassword.length < 8) {
+        alert("Password must be atleast 8 characters");
+        return;
+      }
       const token = localStorage.getItem("token");
 
       let password = {

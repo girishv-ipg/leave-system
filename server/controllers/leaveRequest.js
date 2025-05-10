@@ -113,38 +113,42 @@ const registerLeaveRequest = async (req, res) => {
 
 const getPendingLeaveRequests = async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // today at 00:00
 
-    // Base query: filter by status and startDate
+    // Base‐query: status + upcoming startDate
     const baseQuery = {
       status: {
         $in: [
           "pending",
-          "approved",
-          "cancelled",
-          "rejected",
           "withdrawal-requested",
         ],
       },
-      startDate: { $gte: today },
     };
 
-    let user = await User.findById(req.user.userId).exec();
+    // fetch the logged‐in user
+    const user = await User.findById(req.user.userId).exec();
 
-    let department = user.department;
-    // If manager, filter further by user role and department
-    if (user.role === "manager") {
-      // First, get all users in the same department who are employees
-      const departmentEmployees = await User.find({
-        department,
-      }).select("_id");
+    switch (user.role) {
+      case "admin":
+        // no additional filters: admin sees everything
+        break;
 
-      const employeeIds = departmentEmployees.map((emp) => emp._id);
-      baseQuery.user = { $in: employeeIds };
+      case "manager": {
+        // restrict to users in the same department
+        const departmentEmployees = await User.find({
+          department: user.department,
+        }).select("_id");
+        const employeeIds = departmentEmployees.map((emp) => emp._id);
+        baseQuery.user = { $in: employeeIds };
+        break;
+      }
+
+      default:
+        // any other role (e.g. "employee") → only their own requests
+        baseQuery.user = user._id;
     }
 
-    // Run query
+    // execute query
     const pendingOrUpcomingLeaves = await Leave.find(baseQuery)
       .populate(
         "user",
@@ -152,13 +156,13 @@ const getPendingLeaveRequests = async (req, res) => {
       )
       .sort({ createdAt: -1 });
 
-    res.status(200).json({
+    return res.status(200).json({
       message: "Pending and upcoming leave requests fetched successfully",
       data: pendingOrUpcomingLeaves,
     });
   } catch (error) {
     console.error("Error fetching leaves:", error);
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 

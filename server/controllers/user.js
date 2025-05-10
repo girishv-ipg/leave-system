@@ -18,7 +18,8 @@ const createUser = async (req, res) => {
       role,
       department,
       designation,
-      totalLeaveQuota,
+      carryOverLeaves,
+      currentYearLeaves,
     } = req.body;
 
     // Check for duplicate
@@ -46,8 +47,6 @@ const createUser = async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
-    const leaveBalance = totalLeaveQuota;
-
     const newUser = new User({
       name,
       password: hashedPassword,
@@ -55,9 +54,11 @@ const createUser = async (req, res) => {
       role,
       department,
       designation,
-      totalLeaveQuota,
-      leaveBalance,
+      totalLeaveQuota: Number(carryOverLeaves) + Number(currentYearLeaves),
+      leaveBalance: Number(carryOverLeaves) + Number(currentYearLeaves),
       employeeCode,
+      carryOverLeaves,
+      currentYearLeaves,
     });
 
     await newUser.save();
@@ -90,10 +91,12 @@ const updateUser = async (req, res) => {
       address,
       emergencyContact,
       totalLeaveQuota,
+      carryOverLeaves,
+      currentYearLeaves,
     } = req.body;
 
     // Find the existing user
-    const user = await User.findById(id);
+    let user = await User.findById(id);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -120,6 +123,13 @@ const updateUser = async (req, res) => {
       });
     }
 
+    let totalLeaves = Number(carryOverLeaves) + Number(currentYearLeaves);
+
+    let totalLeaveBalance =
+      Number(totalLeaves) -
+      Number(user.totalLeaveQuota) +
+      Number(user.leaveBalance);
+
     // Update fields
     user.name = name;
     user.employeeCode = employeeCode;
@@ -129,8 +139,10 @@ const updateUser = async (req, res) => {
     user.designation = designation;
     user.address = address;
     user.emergencyContact = emergencyContact;
-    user.totalLeaveQuota = totalLeaveQuota;
-    user.leaveBalance = totalLeaveQuota; // Optionally reset balance
+    user.totalLeaveQuota = totalLeaves;
+    user.leaveBalance = totalLeaveBalance;
+    user.carryOverLeaves = carryOverLeaves;
+    user.currentYearLeaves = currentYearLeaves;
 
     // Hash password only if it's provided and not empty
     if (password && password.trim() !== "") {
@@ -142,7 +154,7 @@ const updateUser = async (req, res) => {
       user.password = await bcrypt.hash(password, SALT_ROUNDS);
     }
 
-    await user.save();
+    user = await user.save();
 
     const userWithoutPassword = { ...user.toObject() };
     delete userWithoutPassword.password;
@@ -227,62 +239,34 @@ const login = async (req, res) => {
   }
 };
 
-// const getAllEmployeesWithLeaveHistory = async (req, res) => {
-//   try {
-//     // Get all employees
-//     const employees = await User.find({}).select("-password");
-
-//     // For each employee, fetch their leave history from the Leave model
-//     const employeesWithLeaves = await Promise.all(
-//       employees.map(async (employee) => {
-//         const leaveHistory = await Leave.find({ user: employee._id })
-//           .populate("reviewedBy")
-//           .sort({
-//             createdAt: -1,
-//           });
-
-//         return {
-//           ...employee.toObject(),
-//           leaveHistory,
-//         };
-//       })
-//     );
-
-//     res.status(200).json({
-//       message: "Employee list with leave history fetched successfully",
-//       data: employeesWithLeaves,
-//     });
-//   } catch (error) {
-//     console.error("Error fetching employee leave history:", error);
-//     res.status(500).json({ error: "Internal server error" });
-//   }
-// };
-
 const getAllEmployeesWithLeaveHistory = async (req, res) => {
   try {
-    let user = await User.findById(req.user.userId);
+    const user = await User.findById(req.user.userId);
 
+    // By default (admin or others) we show everyone:
     let employeeQuery = {};
 
     if (user.role === "manager") {
-      // Manager sees only employees in the same department (excluding other managers)
+      // Manager should see:
+      // 1. All non-manager employees in their department
+      // 2. Plus their own record
       employeeQuery = {
-        department: user.department,
-        role: { $ne: "manager" },
+        $or: [
+          { department: user.department, role: { $ne: "manager" } },
+          { _id: user._id },
+        ],
       };
     }
-    // If Admin, no filtering—show all users
 
     const employees = await User.find(employeeQuery).select("-password");
 
     const employeesWithLeaves = await Promise.all(
-      employees.map(async (employee) => {
-        const leaveHistory = await Leave.find({ user: employee._id })
+      employees.map(async (emp) => {
+        const leaveHistory = await Leave.find({ user: emp._id })
           .populate("reviewedBy")
           .sort({ createdAt: -1 });
-
         return {
-          ...employee.toObject(),
+          ...emp.toObject(),
           leaveHistory,
         };
       })
@@ -333,7 +317,7 @@ const getUserById = async (req, res) => {
   try {
     let { id } = req.params;
 
-    const user = await User.findById(id);
+    const user = await User.findById(id).select("-password");
     return res.status(200).json({
       data: user,
     });
@@ -361,17 +345,6 @@ const updateUserPassword = async (req, res) => {
     const user = await User.findById(req.user.userId);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
-    }
-
-    // Check if new password is same as old password
-    const isSamePassword = await bcrypt.compare(
-      password.password,
-      user.password
-    );
-    if (isSamePassword) {
-      return res.status(400).json({
-        error: "New password must be different from the old password",
-      });
     }
 
     // Hash the new password

@@ -119,9 +119,12 @@ const EmployeeList = () => {
                 <TableCell>Employee ID</TableCell>
                 <TableCell>Department</TableCell>
                 <TableCell>Role</TableCell>
+                <TableCell>Carry Over Leaves</TableCell>
+                <TableCell>Current Year Leaves</TableCell>
+                <TableCell>Total Leave Quota</TableCell>
                 <TableCell>Leave Taken</TableCell>
                 <TableCell>Leave Balance</TableCell>
-                <TableCell>Total Leave Quota</TableCell>
+
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -138,12 +141,19 @@ const EmployeeList = () => {
                   <TableCell sx={{ textTransform: "capitalize" }}>
                     {emp.role}
                   </TableCell>
+                  <TableCell sx={{ textTransform: "capitalize" }}>
+                    {emp.carryOverLeaves}
+                  </TableCell>
+                  <TableCell sx={{ textTransform: "capitalize" }}>
+                    {emp.currentYearLeaves}
+                  </TableCell>
+                  <TableCell>{emp.totalLeaveQuota || "--"}</TableCell>
                   <TableCell>
                     {Number(emp.totalLeaveQuota) - Number(emp.leaveBalance) ||
                       0}
                   </TableCell>
                   <TableCell>{emp.leaveBalance || "--"}</TableCell>
-                  <TableCell>{emp.totalLeaveQuota}</TableCell>
+
                   <TableCell>
                     <Stack direction="row" spacing={1}>
                       <Tooltip title="View Details">

@@ -31,8 +31,9 @@ const initialStates = {
   password: "",
   gender: "",
   designation: "",
-  totalLeaveQuota: "",
   department: "",
+  carryOverLeaves: "",
+  currentYearLeaves: "",
 };
 
 const RegisterEmployee = () => {
@@ -57,30 +58,7 @@ const RegisterEmployee = () => {
     if (edit === "true" && id) {
       setIsEditMode(true);
       setEmployeeId(id);
-
-      // Get employee data from localStorage (set in the list page)
-      const storedEmployee = localStorage.getItem("editEmployee");
-      if (storedEmployee) {
-        const employeeData = JSON.parse(storedEmployee);
-        // Remove any temporary localStorage data
-        localStorage.removeItem("editEmployee");
-
-        // Populate form with employee data
-        setForm({
-          name: employeeData.name || "",
-          employeeCode: employeeData.employeeCode || "",
-          role: employeeData.role || "employee",
-          // Don't pre-populate password for security reasons
-          password: "",
-          gender: employeeData.gender || "",
-          designation: employeeData.designation || "",
-          totalLeaveQuota: employeeData.totalLeaveQuota || "",
-          department: employeeData.department || "",
-        });
-      } else {
-        // If no stored data, fetch from API
-        fetchEmployeeData(id);
-      }
+      fetchEmployeeData(id);
     }
   }, [edit, id]);
 
@@ -93,18 +71,7 @@ const RegisterEmployee = () => {
       });
 
       const employeeData = response.data.data;
-
-      console.log(employeeData, "employeeData");
-      setForm({
-        name: employeeData.name || "",
-        employeeCode: employeeData.employeeCode || "",
-        role: employeeData.role || "employee",
-        password: "", // Don't pre-populate password
-        gender: employeeData.gender || "",
-        designation: employeeData.designation || "",
-        totalLeaveQuota: employeeData.totalLeaveQuota || "",
-        department: employeeData.department || "",
-      });
+      setForm(employeeData);
     } catch (error) {
       console.error("Error fetching employee data:", error);
       setSnackbar({
@@ -144,8 +111,6 @@ const RegisterEmployee = () => {
       newErrors.password = "Password is required";
     if (!form.designation) newErrors.designation = "Designation is required";
     if (!form.department) newErrors.department = "Department is required";
-    if (!form.totalLeaveQuota)
-      newErrors.totalLeaveQuota = "Leave quota is required";
 
     setError(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -320,12 +285,23 @@ const RegisterEmployee = () => {
             />
 
             <TextField
-              label="Total Leave Quota*"
-              name="totalLeaveQuota"
+              label="Carry Over Leaves*"
+              name="carryOverLeaves"
               type="number"
-              value={form.totalLeaveQuota}
-              error={!!error.totalLeaveQuota}
-              helperText={error.totalLeaveQuota}
+              value={form.carryOverLeaves}
+              error={!!error.carryOverLeaves}
+              helperText={error.carryOverLeaves}
+              onChange={handleChange}
+              fullWidth
+            />
+
+            <TextField
+              label="Current Year Leaves*"
+              name="currentYearLeaves"
+              type="number"
+              value={form.currentYearLeaves}
+              error={!!error.currentYearLeaves}
+              helperText={error.currentYearLeaves}
               onChange={handleChange}
               fullWidth
             />

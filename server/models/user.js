@@ -24,11 +24,6 @@ const userSchema = new mongoose.Schema(
     designation: { type: String, required: true, trim: true },
     reportingManager: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 
-    status: { type: String, enum: ["active", "inactive"], default: "active" },
-
-    isVerified: { type: Boolean, default: false },
-    lastLogin: { type: Date },
-
     // Total annual leave quota for this user (customizable per department/policy)
     totalLeaveQuota: {
       type: Number,
@@ -39,6 +34,20 @@ const userSchema = new mongoose.Schema(
     leaveBalance: {
       type: Number,
       required: false,
+    },
+
+    // **New**: carry-over from last year
+    carryOverLeaves: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+
+    // **New**: fresh allocation for this year
+    currentYearLeaves: {
+      type: Number,
+      required: true,
+      default: 0,
     },
   },
   {

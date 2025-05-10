@@ -98,7 +98,7 @@ const Requests = () => {
                   <TextField
                     label="Comment"
                     size="small"
-                    value={req.adminNote}
+                    value={adminNote}
                     onChange={(e) => setAdminNote(e.target.value)}
                   />
                   <Stack direction="row" sx={{ pt: 2 }} spacing={2}>
@@ -129,7 +129,6 @@ const Requests = () => {
                       variant="contained"
                       color="error"
                       onClick={() => handleDecision(req._id, "rejected")}
-                      disabled={req.status !== "pending"}
                     >
                       Deny
                     </Button>

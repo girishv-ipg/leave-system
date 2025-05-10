@@ -115,6 +115,12 @@ const EmployeeList = () => {
           <Typography>
             <b>Leave Balance:</b> {employee?.leaveBalance}
           </Typography>
+          <Typography>
+            <b>Carry Over Leaves:</b> {employee?.carryOverLeaves}
+          </Typography>
+          <Typography>
+            <b>Current Year Leaves:</b> {employee?.currentYearLeaves}
+          </Typography>
         </Stack>
 
         <Typography variant="h5" gutterBottom>
