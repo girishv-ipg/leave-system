@@ -8,11 +8,11 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import { useMemo, useState } from "react";
 
 import EmployeeLayout from "..";
 import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 
 const initialForm = {
   startDate: "",
@@ -32,6 +32,15 @@ const LeaveRequestForm = () => {
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
+
+  // 1️⃣ detect multi-day
+  const isMultiDay = useMemo(() => {
+    if (!form.startDate || !form.endDate) return false;
+    const start = new Date(form.startDate);
+    const end = new Date(form.endDate);
+    // compare only calendar days
+    return end.getTime() - start.getTime() >= 24 * 60 * 60 * 1000;
+  }, [form.startDate, form.endDate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -116,6 +125,7 @@ const LeaveRequestForm = () => {
                 onChange={handleChange}
                 select
                 required
+                disabled={isMultiDay}
               >
                 <MenuItem value="full-day">Full Day</MenuItem>
                 <MenuItem value="half-day">Half Day</MenuItem>

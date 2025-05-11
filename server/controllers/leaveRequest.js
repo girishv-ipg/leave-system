@@ -118,10 +118,7 @@ const getPendingLeaveRequests = async (req, res) => {
     // Base‐query: status + upcoming startDate
     const baseQuery = {
       status: {
-        $in: [
-          "pending",
-          "withdrawal-requested",
-        ],
+        $in: ["pending", "withdrawal-requested"],
       },
     };
 
@@ -150,10 +147,8 @@ const getPendingLeaveRequests = async (req, res) => {
 
     // execute query
     const pendingOrUpcomingLeaves = await Leave.find(baseQuery)
-      .populate(
-        "user",
-        "name employeeCode designation gender role status department"
-      )
+      .select("_id adminNote startDate endDate reason status")
+      .populate("user")
       .sort({ createdAt: -1 });
 
     return res.status(200).json({

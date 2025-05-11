@@ -54,6 +54,7 @@ const leaveSchema = new mongoose.Schema(
     adminNote: {
       type: String,
       trim: true,
+      default: "",
     },
 
     // New fields for managing half-day leave

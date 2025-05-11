@@ -8,11 +8,11 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import { useMemo, useState } from "react";
 
 import AdminLayout from "..";
 import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import withAdminAuth from "@/pages/auth/Authentication";
 
 const initialForm = {
@@ -68,6 +68,14 @@ const LeaveRequestForm = () => {
     }
   };
 
+  const isMultiDay = useMemo(() => {
+    if (!form.startDate || !form.endDate) return false;
+    const start = new Date(form.startDate);
+    const end = new Date(form.endDate);
+    // compare only calendar days
+    return end.getTime() - start.getTime() >= 24 * 60 * 60 * 1000;
+  }, [form.startDate, form.endDate]);
+
   return (
     <AdminLayout>
       <Container maxWidth="sm" sx={{ mt: 4 }}>
@@ -117,6 +125,7 @@ const LeaveRequestForm = () => {
                 onChange={handleChange}
                 select
                 required
+                disabled={isMultiDay}
               >
                 <MenuItem value="full-day">Full Day</MenuItem>
                 <MenuItem value="half-day">Half Day</MenuItem>

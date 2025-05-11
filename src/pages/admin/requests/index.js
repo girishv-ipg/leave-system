@@ -30,7 +30,6 @@ const Requests = () => {
         }
       );
       getLeaveRequests();
-      console.log(res.data, "response");
     } catch (error) {
       console.error("Error updating comment:", error);
     }
@@ -46,6 +45,7 @@ const Requests = () => {
           },
         }
       );
+      console.log(response.data.data, "data");
       setLeaveRequests(response.data.data);
     } catch (error) {
       console.error("Error fetching leave requests:", error);
@@ -65,6 +65,13 @@ const Requests = () => {
     return `${day}-${month}-${year}`;
   };
 
+  const handleNotes = (e, index) => {
+    const tempData = [...leaveRequests];
+    tempData[index]["adminNote"] = e.target.value;
+    setAdminNote(e.target.value);
+    setLeaveRequests(tempData);
+  };
+
   return (
     <AdminLayout>
       <Box>
@@ -74,7 +81,7 @@ const Requests = () => {
           </Typography>
 
           <Stack>
-            {leaveRequests.map((req) => (
+            {leaveRequests.map((req, index) => (
               <Paper key={req.id} sx={{ p: 2, mb: 2 }}>
                 <Stack spacing={1}>
                   <Typography>
@@ -98,8 +105,10 @@ const Requests = () => {
                   <TextField
                     label="Comment"
                     size="small"
-                    value={adminNote}
-                    onChange={(e) => setAdminNote(e.target.value)}
+                    value={req.adminNote}
+                    onChange={(e) => {
+                      handleNotes(e, index);
+                    }}
                   />
                   <Stack direction="row" sx={{ pt: 2 }} spacing={2}>
                     <Button
