@@ -215,4 +215,4 @@ const EmployeeList = () => {
   );
 };
 
-export default withAdminAuth(EmployeeList, ["manager", "admin"]);
+export default withAdminAuth(EmployeeList, ["manager", "admin","hr"]);

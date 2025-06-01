@@ -103,6 +103,15 @@ const EmployeeList = () => {
     return diffDays;
   };
 
+  let isHr = () => {
+    const user = JSON.parse(localStorage.getItem("user"));
+
+    if (user && user.role === "hr") {
+      return true;
+    }
+    return false;
+  };
+
   return (
     <AdminLayout>
       {" "}
@@ -125,7 +134,7 @@ const EmployeeList = () => {
                 <TableCell>Leave Taken</TableCell>
                 <TableCell>Leave Balance</TableCell>
 
-                <TableCell>Actions</TableCell>
+                {isHr() ? null : <TableCell>Actions</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -154,34 +163,36 @@ const EmployeeList = () => {
                   </TableCell>
                   <TableCell>{emp.leaveBalance || "--"}</TableCell>
 
-                  <TableCell>
-                    <Stack direction="row" spacing={1}>
-                      <Tooltip title="View Details">
-                        <IconButton
-                          color="primary"
-                          onClick={() => handleOpen(emp)}
-                        >
-                          <Visibility />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Edit">
-                        <IconButton
-                          color="info"
-                          onClick={() => handleEdit(emp)}
-                        >
-                          <Edit />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete">
-                        <IconButton
-                          color="error"
-                          onClick={() => handleDelete(emp._id)}
-                        >
-                          <Delete />
-                        </IconButton>
-                      </Tooltip>
-                    </Stack>
-                  </TableCell>
+                  {isHr() ? null : (
+                    <TableCell>
+                      <Stack direction="row" spacing={1}>
+                        <Tooltip title="View Details">
+                          <IconButton
+                            color="primary"
+                            onClick={() => handleOpen(emp)}
+                          >
+                            <Visibility />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Edit">
+                          <IconButton
+                            color="info"
+                            onClick={() => handleEdit(emp)}
+                          >
+                            <Edit />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete">
+                          <IconButton
+                            color="error"
+                            onClick={() => handleDelete(emp._id)}
+                          >
+                            <Delete />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -220,7 +231,7 @@ const EmployeeList = () => {
                   <TableCell>From</TableCell>
                   <TableCell>To</TableCell>
                   <TableCell>Type</TableCell>
-                  <TableCell>Days</TableCell>
+                  <TableCell>Business Days</TableCell>
                   <TableCell>Reason</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Comment</TableCell>
@@ -236,11 +247,12 @@ const EmployeeList = () => {
                       {entry?.leaveType}
                     </TableCell>
                     <TableCell>
-                      {calculateLeaveDays(
-                        entry.startDate,
-                        entry.endDate,
-                        entry.leaveDuration
-                      )}
+                      {entry.numberOfDays ||
+                        calculateLeaveDays(
+                          entry.startDate,
+                          entry.endDate,
+                          entry.leaveDuration
+                        )}
                     </TableCell>
                     <TableCell sx={{ textTransform: "capitalize" }}>
                       {entry?.reason}
@@ -270,4 +282,4 @@ const EmployeeList = () => {
   );
 };
 
-export default withAdminAuth(EmployeeList, ["admin", "manager"]);
+export default withAdminAuth(EmployeeList, ["admin", "manager", "hr"]);

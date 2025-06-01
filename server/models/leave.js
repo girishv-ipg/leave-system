@@ -69,6 +69,10 @@ const leaveSchema = new mongoose.Schema(
 
       default: undefined, // Ensures Mongoose doesn't default to empty string
     },
+    numberOfDays: {
+      type: Number,
+      default: 0, // Will be computed and stored after approval
+    },
   },
   {
     timestamps: true,

@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 const connect = () => {
-  return mongoose.connect(process.env.MONGO_URL, {
+  return mongoose.connect("mongodb://localhost:27017/leaveSystem", {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   });

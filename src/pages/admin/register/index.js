@@ -232,6 +232,7 @@ const RegisterEmployee = () => {
                 <MenuItem value="employee">Employee</MenuItem>
                 <MenuItem value="admin">Admin</MenuItem>
                 <MenuItem value="manager">Manager</MenuItem>
+                <MenuItem value="hr">HR</MenuItem>
               </Select>
               {!form.role && <FormHelperText>Role is required</FormHelperText>}
             </FormControl>
@@ -246,6 +247,7 @@ const RegisterEmployee = () => {
               >
                 <MenuItem value="engineering">Engineering</MenuItem>
                 <MenuItem value="sales">Sales</MenuItem>
+                <MenuItem value="hr">HR</MenuItem>
               </Select>
             </FormControl>
 
@@ -351,4 +353,4 @@ const RegisterEmployee = () => {
   );
 };
 
-export default withAdminAuth(RegisterEmployee, ["admin", "manager"]);
+export default withAdminAuth(RegisterEmployee, ["admin", "manager", "hr"]);

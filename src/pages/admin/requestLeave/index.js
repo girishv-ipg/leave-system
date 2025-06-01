@@ -177,4 +177,4 @@ const LeaveRequestForm = () => {
   );
 };
 
-export default withAdminAuth(LeaveRequestForm, ["admin", "manager"]);
+export default withAdminAuth(LeaveRequestForm, ["admin", "manager", "hr"]);

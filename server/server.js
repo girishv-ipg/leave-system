@@ -70,8 +70,8 @@ app.listen(4000, async () => {
     await connect();
     console.log("Connected to MongoDB");
     // 👇 Force collection creation here
-    await User.init();
-    await Leave.init();
+    // await User.init();
+    // await Leave.init();
     console.log("User and Leave models initialized");
   } catch (err) {
     console.error("Error connecting to MongoDB:", err);

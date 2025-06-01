@@ -170,4 +170,4 @@ const Requests = () => {
   );
 };
 
-export default withAdminAuth(Requests, ["admin", "manager"]);
+export default withAdminAuth(Requests, ["admin", "manager", "hr"]);

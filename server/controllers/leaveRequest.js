@@ -78,39 +78,6 @@ const registerLeaveRequest = async (req, res) => {
   }
 };
 
-// const getPendingLeaveRequests = async (req, res) => {
-//   try {
-//     // Get today's date at midnight
-//     const today = new Date();
-//     today.setHours(0, 0, 0, 0);
-
-//     // Get tomorrow to define range for "today"
-
-//     const pendingOrUpcomingLeaves = await Leave.find({
-//       status: {
-//         $in: [
-//           "pending",
-//           "approved",
-//           "cancelled",
-//           "rejected",
-//           "withdrawal-requested",
-//         ],
-//       },
-//       startDate: { $gte: today }, // Today or future only
-//     })
-//       .populate("user", "name employeeCode designation gender role status")
-//       .sort({ createdAt: -1 });
-
-//     res.status(200).json({
-//       message: "Pending and today's leave requests fetched successfully",
-//       data: pendingOrUpcomingLeaves,
-//     });
-//   } catch (error) {
-//     console.error("Error fetching leaves:", error);
-//     res.status(500).json({ error: "Internal server error" });
-//   }
-// };
-
 const getPendingLeaveRequests = async (req, res) => {
   try {
     // today at 00:00
@@ -131,6 +98,16 @@ const getPendingLeaveRequests = async (req, res) => {
         break;
 
       case "manager": {
+        // restrict to users in the same department
+        const departmentEmployees = await User.find({
+          department: user.department,
+        }).select("_id");
+        const employeeIds = departmentEmployees.map((emp) => emp._id);
+        baseQuery.user = { $in: employeeIds };
+        break;
+      }
+
+      case "hr": {
         // restrict to users in the same department
         const departmentEmployees = await User.find({
           department: user.department,
@@ -197,7 +174,9 @@ const updateLeaveStatus = async (req, res) => {
         const start = new Date(leave.startDate);
         const end = new Date(leave.endDate);
         const diffTime = Math.abs(end - start);
-        days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // inclusive
+        // days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // inclusive
+        days = countWorkingDays(start, end);
+        leave.numberOfDays = days;
       }
 
       user.leaveBalance = (user.leaveBalance || 0) - days;
@@ -218,10 +197,12 @@ const updateLeaveStatus = async (req, res) => {
         const start = new Date(leave.startDate);
         const end = new Date(leave.endDate);
         const diffTime = Math.abs(end - start);
-        days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // inclusive
+        // days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // inclusive
+        days = countWorkingDays(start, end);
+        leave.numberOfDays = 0;
       }
 
-      // ✅ Add back leave balance and subtract from leaveTaken
+      //  Add back leave balance and subtract from leaveTaken
       user.leaveBalance = (user.leaveBalance || 0) + days;
       user.leaveTaken = Math.max((user.leaveTaken || 0) - days, 0);
 
@@ -235,6 +216,31 @@ const updateLeaveStatus = async (req, res) => {
     console.error("Error updating leave status:", error);
     res.status(500).json({ error: "Internal server error" });
   }
+};
+
+const countWorkingDays = (start, end) => {
+  const holidays = ["2025-06-01", "2025-06-03", "2025-06-04"];
+  const current = new Date(start);
+  let count = 0;
+  while (current <= end) {
+    if (!isWeekend(current) && !isHoliday(current, holidays)) {
+      count++;
+    }
+    current.setDate(current.getDate() + 1);
+  }
+  console.log(count, "count");
+  return count;
+};
+
+const isWeekend = (date) => {
+  const day = date.getDay();
+  return day === 0 || day === 6; // Sunday or Saturday
+};
+
+const isHoliday = (date, holidays) => {
+  return holidays.some(
+    (h) => new Date(h).toDateString() === date.toDateString()
+  );
 };
 
 const updateStatus = async (req, res) => {

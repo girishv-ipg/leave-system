@@ -26,7 +26,7 @@ const LoginPage = () => {
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user"));
 
-    if (["admin", "manager"].includes(user?.role)) {
+    if (["admin", "manager", "hr"].includes(user?.role)) {
       router.replace("/admin/requests");
     } else if (user?.role === "employee") {
       router.replace("/employee/employeeDetail");
@@ -39,9 +39,10 @@ const LoginPage = () => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleLogin = async () => {
+  const handleLogin = async (event) => {
     setErrors({});
     setServerError("");
+    event.preventDefault();
 
     const newErrors = {};
     if (!form.employeeCode)
@@ -60,8 +61,8 @@ const LoginPage = () => {
       localStorage.setItem("user", JSON.stringify(user));
       localStorage.setItem("token", token);
 
-      if (["admin", "manager"].includes(user?.role)) {
-        router.push("/admin/requests");
+      if (["admin", "manager", "hr"].includes(user?.role)) {
+        router.push("/main");
       } else {
         router.push("/employee/employeeDetail");
       }
@@ -80,55 +81,57 @@ const LoginPage = () => {
       height="100vh"
       sx={{ backgroundColor: "#eeeeee" }}
     >
-      <Paper elevation={3} sx={{ p: 4, width: 600 }}>
-        <Stack spacing={2}>
-          <Typography variant="h6" align="center">
-            Login
-          </Typography>
-
-          {serverError && (
-            <Typography variant="body2" color="error" align="center">
-              {serverError}
+      <form onSubmit={handleLogin}>
+        <Paper elevation={3} sx={{ p: 4, width: 600 }}>
+          <Stack spacing={2}>
+            <Typography variant="h6" align="center">
+              Login
             </Typography>
-          )}
 
-          <TextField
-            label="Employee Code"
-            name="employeeCode"
-            value={form.employeeCode}
-            onChange={handleChange}
-            error={!!errors.employeeCode}
-            helperText={errors.employeeCode}
-            fullWidth
-          />
-          <TextField
-            label="Password"
-            type={showPassword ? "text" : "password"}
-            name="password"
-            value={form.password}
-            onChange={handleChange}
-            error={!!errors.password}
-            helperText={errors.password}
-            fullWidth
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={() => setShowPassword(!showPassword)}
-                    edge="end"
-                  >
-                    {showPassword ? <VisibilityOff /> : <Visibility />}
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-          />
+            {serverError && (
+              <Typography variant="body2" color="error" align="center">
+                {serverError}
+              </Typography>
+            )}
 
-          <Button variant="contained" onClick={handleLogin} fullWidth>
-            Sign In
-          </Button>
-        </Stack>
-      </Paper>
+            <TextField
+              label="Employee Code"
+              name="employeeCode"
+              value={form.employeeCode}
+              onChange={handleChange}
+              error={!!errors.employeeCode}
+              helperText={errors.employeeCode}
+              fullWidth
+            />
+            <TextField
+              label="Password"
+              type={showPassword ? "text" : "password"}
+              name="password"
+              value={form.password}
+              onChange={handleChange}
+              error={!!errors.password}
+              helperText={errors.password}
+              fullWidth
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      onClick={() => setShowPassword(!showPassword)}
+                      edge="end"
+                    >
+                      {showPassword ? <VisibilityOff /> : <Visibility />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+
+            <Button variant="contained" type="submit" fullWidth>
+              Sign In
+            </Button>
+          </Stack>
+        </Paper>
+      </form>
     </Box>
   );
 };

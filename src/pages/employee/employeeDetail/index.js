@@ -133,7 +133,7 @@ const EmployeeList = () => {
                 <TableCell>From</TableCell>
                 <TableCell>To</TableCell>
                 <TableCell>Type</TableCell>
-                <TableCell>Days</TableCell>
+                <TableCell>Business Days</TableCell>
                 <TableCell>Reason</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Comment</TableCell>
@@ -149,11 +149,12 @@ const EmployeeList = () => {
                     {leave?.leaveType}
                   </TableCell>
                   <TableCell>
-                    {calculateLeaveDays(
-                      leave.startDate,
-                      leave.endDate,
-                      leave.leaveDuration
-                    )}
+                    {leave.numberOfDays ||
+                      calculateLeaveDays(
+                        leave.startDate,
+                        leave.endDate,
+                        leave.leaveDuration
+                      )}
                   </TableCell>
                   <TableCell sx={{ textTransform: "capitalize" }}>
                     {leave?.reason}
