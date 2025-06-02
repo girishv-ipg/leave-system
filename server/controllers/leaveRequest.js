@@ -219,7 +219,16 @@ const updateLeaveStatus = async (req, res) => {
 };
 
 const countWorkingDays = (start, end) => {
-  const holidays = ["2025-06-01", "2025-06-03", "2025-06-04"];
+  const holidays = [
+    "2025-01-05",
+    "2025-08-15",
+    "2025-08-27",
+    "2025-10-01",
+    "2025-10-02",
+    "2025-10-20",
+    "2025-11-01",
+    "2025-10-25",
+  ];
   const current = new Date(start);
   let count = 0;
   while (current <= end) {

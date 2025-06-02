@@ -24,7 +24,7 @@ const Main = () => {
       sx={{
         height: "100vh",
         width: "100vw",
-        backgroundImage: 'url("/ipg-background.jpg")',
+        backgroundImage: 'url("/ipg2.png")',
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
