@@ -181,7 +181,7 @@ const updateLeaveStatus = async (req, res) => {
 
       user.leaveBalance = (user.leaveBalance || 0) - days;
 
-      if (user.leaveBalance < 0) user.leaveBalance = 0; // prevent negative
+      // if (user.leaveBalance < 0) user.leaveBalance = 0; // prevent negative
 
       await user.save();
     }

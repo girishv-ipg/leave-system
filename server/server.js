@@ -21,7 +21,7 @@ app.use(
   })
 );
 
-app.get("/", authenticate, async (req, res) => {
+app.get("/health", async (req, res) => {
   return res.send({ message: "Hello" });
 });
 
@@ -70,8 +70,8 @@ app.listen(4000, async () => {
     await connect();
     console.log("Connected to MongoDB");
     // 👇 Force collection creation here
-    // await User.init();
-    // await Leave.init();
+    await User.init();
+    await Leave.init();
     console.log("User and Leave models initialized");
   } catch (err) {
     console.error("Error connecting to MongoDB:", err);
