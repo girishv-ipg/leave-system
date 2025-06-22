@@ -88,19 +88,38 @@ const EmployeeList = () => {
     getEmployees();
   }, []);
 
-  const calculateLeaveDays = (startDate, endDate, leaveDuration) => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+  const countWorkingDays = (start, end) => {
+    const holidays = [
+      "2025-01-05",
+      "2025-08-15",
+      "2025-08-27",
+      "2025-10-01",
+      "2025-10-02",
+      "2025-10-20",
+      "2025-11-01",
+      "2025-10-25",
+    ];
+    // Pre-map holidays to strings for fast lookup
+    const holidaySet = new Set(holidays.map((h) => new Date(h).toDateString()));
 
-    // Calculate the difference in milliseconds and convert to days
-    const timeDiff = Math.abs(end - start);
-    const diffDays = Math.floor(timeDiff / (1000 * 60 * 60 * 24)) + 1;
+    const current = new Date(start);
+    const lastDay = new Date(end);
 
-    if (leaveDuration === "half-day") {
-      return 0.5;
+    let count = 0;
+    while (current <= lastDay) {
+      const day = current.getDay();
+      const todayStr = current.toDateString();
+
+      // skip Saturday (6) & Sunday (0), and any holiday
+      if (day !== 0 && day !== 6 && !holidaySet.has(todayStr)) {
+        count++;
+      }
+
+      current.setDate(current.getDate() + 1);
     }
 
-    return diffDays;
+    console.log(count, "working days");
+    return count;
   };
 
   let isHr = () => {
@@ -247,12 +266,7 @@ const EmployeeList = () => {
                       {entry?.leaveType}
                     </TableCell>
                     <TableCell>
-                      {entry.numberOfDays ||
-                        calculateLeaveDays(
-                          entry.startDate,
-                          entry.endDate,
-                          entry.leaveDuration
-                        )}
+                      {countWorkingDays(entry.startDate, entry.endDate)}
                     </TableCell>
                     <TableCell sx={{ textTransform: "capitalize" }}>
                       {entry?.reason}
