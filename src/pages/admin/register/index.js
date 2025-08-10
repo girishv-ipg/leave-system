@@ -34,6 +34,7 @@ const initialStates = {
   department: "",
   carryOverLeaves: "",
   currentYearLeaves: "",
+  joiningDate: "",
 };
 
 const RegisterEmployee = () => {
@@ -206,6 +207,22 @@ const RegisterEmployee = () => {
               error={!!error.employeeCode}
               helperText={error.employeeCode}
               disabled={isEditMode} // Prevent changing employee code in edit mode
+            />
+            <TextField
+              label="Joining Date*"
+              name="joiningDate"
+              type="date"
+              value={
+                form?.joiningDate
+                  ? new Date(form.joiningDate).toISOString().split("T")[0]
+                  : ""
+              }
+              onChange={handleChange}
+              InputLabelProps={{
+                shrink: true,
+              }}
+              error={!!error.joiningDate}
+              helperText={error.joiningDate}
             />
 
             <FormControl fullWidth>

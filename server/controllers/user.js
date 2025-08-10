@@ -20,6 +20,7 @@ const createUser = async (req, res) => {
       designation,
       carryOverLeaves,
       currentYearLeaves,
+      joiningDate,
     } = req.body;
 
     // Check for duplicate
@@ -59,6 +60,7 @@ const createUser = async (req, res) => {
       employeeCode,
       carryOverLeaves,
       currentYearLeaves,
+      joiningDate,
     });
 
     await newUser.save();
@@ -93,6 +95,7 @@ const updateUser = async (req, res) => {
       totalLeaveQuota,
       carryOverLeaves,
       currentYearLeaves,
+      joiningDate,
     } = req.body;
 
     // Find the existing user
@@ -143,6 +146,7 @@ const updateUser = async (req, res) => {
     user.leaveBalance = totalLeaveBalance;
     user.carryOverLeaves = carryOverLeaves;
     user.currentYearLeaves = currentYearLeaves;
+    user.joiningDate = joiningDate;
 
     // Hash password only if it's provided and not empty
     if (password && password.trim() !== "") {
@@ -316,6 +320,7 @@ const getUserById = async (req, res) => {
     let { id } = req.params;
 
     const user = await User.findById(id).select("-password");
+
     return res.status(200).json({
       data: user,
     });

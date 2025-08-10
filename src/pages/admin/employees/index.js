@@ -24,6 +24,9 @@ import axiosInstance, { formatDate } from "@/utils/helpers";
 import { useEffect, useState } from "react";
 
 import AdminLayout from "..";
+import CalendarModal from "./CalendarModal";
+import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import LeaveCalendar from "@/components/Calendar";
 import { useRouter } from "next/router";
 import withAdminAuth from "@/pages/auth/Authentication";
 
@@ -32,6 +35,7 @@ const EmployeeList = () => {
   const [open, setOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [employees, setEmployees] = useState([]);
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   const handleOpen = (emp) => {
     setSelectedEmployee(emp);
@@ -77,6 +81,8 @@ const EmployeeList = () => {
         },
       });
 
+      console.log(response.data.data);
+
       setEmployees(response.data.data);
     } catch (error) {
       console.error("Error fetching leave requests:", error);
@@ -88,9 +94,14 @@ const EmployeeList = () => {
     getEmployees();
   }, []);
 
-  const countWorkingDays = (start, end) => {
+  const countWorkingDays = (start, end, halfDayType = "") => {
     const holidays = [
-      "2025-01-05",
+      "2025-01-01",
+      "2025-01-14",
+      "2025-01-26",
+      "2025-02-26",
+      "2025-04-18",
+      "2025-05-01",
       "2025-08-15",
       "2025-08-27",
       "2025-10-01",
@@ -99,26 +110,41 @@ const EmployeeList = () => {
       "2025-11-01",
       "2025-10-25",
     ];
-    // Pre-map holidays to strings for fast lookup
+
+    // Normalize holiday strings for quick lookup
     const holidaySet = new Set(holidays.map((h) => new Date(h).toDateString()));
 
+    // Ensure start <= end
+    const s = new Date(start);
+    const e = new Date(end);
+    if (s > e) [start, end] = [end, start];
+
+    const isWorkingDay = (d) => {
+      const day = d.getDay(); // 0 Sun, 6 Sat
+      return day !== 0 && day !== 6 && !holidaySet.has(d.toDateString());
+    };
+
+    // If half day, return 0.5 only if there’s at least one working day in the range
+    if (halfDayType) {
+      const d = new Date(start);
+      const last = new Date(end);
+      while (d <= last) {
+        if (isWorkingDay(d)) return 0.5;
+        d.setDate(d.getDate() + 1);
+      }
+      return 0; // range had no working days
+    }
+
+    // Full-day counting
     const current = new Date(start);
     const lastDay = new Date(end);
-
     let count = 0;
+
     while (current <= lastDay) {
-      const day = current.getDay();
-      const todayStr = current.toDateString();
-
-      // skip Saturday (6) & Sunday (0), and any holiday
-      if (day !== 0 && day !== 6 && !holidaySet.has(todayStr)) {
-        count++;
-      }
-
+      if (isWorkingDay(current)) count++;
       current.setDate(current.getDate() + 1);
     }
 
-    console.log(count, "working days");
     return count;
   };
 
@@ -129,6 +155,11 @@ const EmployeeList = () => {
       return true;
     }
     return false;
+  };
+
+  const handleCalendarView = (employee) => {
+    setSelectedEmployee(employee);
+    setCalendarOpen(true);
   };
 
   return (
@@ -146,6 +177,7 @@ const EmployeeList = () => {
                 <TableCell>Name</TableCell>
                 <TableCell>Employee ID</TableCell>
                 <TableCell>Department</TableCell>
+                <TableCell>DOJ</TableCell>
                 <TableCell>Role</TableCell>
                 <TableCell>Carry Over Leaves</TableCell>
                 <TableCell>Current Year Leaves</TableCell>
@@ -166,6 +198,16 @@ const EmployeeList = () => {
                   <TableCell sx={{ textTransform: "capitalize" }}>
                     {emp.department}
                   </TableCell>
+                  <TableCell sx={{ textTransform: "capitalize" }}>
+                    {emp.joiningDate
+                      ? new Date(emp.joiningDate).toLocaleDateString("en-GB", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                        })
+                      : "NA"}
+                  </TableCell>
+
                   <TableCell sx={{ textTransform: "capitalize" }}>
                     {emp.role}
                   </TableCell>
@@ -207,6 +249,15 @@ const EmployeeList = () => {
                             onClick={() => handleDelete(emp._id)}
                           >
                             <Delete />
+                          </IconButton>
+                        </Tooltip>
+
+                        <Tooltip title="Calendar">
+                          <IconButton
+                            color="primary"
+                            onClick={() => handleCalendarView(emp)}
+                          >
+                            <CalendarTodayIcon />
                           </IconButton>
                         </Tooltip>
                       </Stack>
@@ -266,7 +317,11 @@ const EmployeeList = () => {
                       {entry?.leaveType}
                     </TableCell>
                     <TableCell>
-                      {countWorkingDays(entry.startDate, entry.endDate)}
+                      {countWorkingDays(
+                        entry.startDate,
+                        entry.endDate,
+                        entry.halfDayType
+                      )}
                     </TableCell>
                     <TableCell sx={{ textTransform: "capitalize" }}>
                       {entry?.reason}
@@ -292,6 +347,13 @@ const EmployeeList = () => {
           </DialogActions>
         </Dialog>
       </Box>
+      {/* Calendar Modal */}
+      <CalendarModal
+        open={calendarOpen}
+        onClose={() => setCalendarOpen(false)}
+        title="Leaves"
+        employee={selectedEmployee}
+      />
     </AdminLayout>
   );
 };

@@ -49,6 +49,12 @@ const userSchema = new mongoose.Schema(
       required: true,
       default: 0,
     },
+    // Date the employee joined the organization
+    joiningDate: {
+      type: Date,
+      required: false,
+      default: "", // make true if mandatory
+    },
   },
   {
     timestamps: true, // Adds createdAt and updatedAt fields
