@@ -61,10 +61,8 @@ const LoginPage = () => {
       localStorage.setItem("user", JSON.stringify(user));
       localStorage.setItem("token", token);
 
-      if (["admin", "manager", "hr"].includes(user?.role)) {
+      if (user?.role) {
         router.push("/main");
-      } else {
-        router.push("/employee/employeeDetail");
       }
     } catch (error) {
       const msg =

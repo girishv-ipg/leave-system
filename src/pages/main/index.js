@@ -8,14 +8,37 @@ import { useRouter } from "next/navigation";
 const Main = () => {
   const router = useRouter();
 
+  const handleTravelExpenseClick = () => {
+    // Get user data from localStorage
+    const userData = localStorage.getItem("user");
+    let userRole = "employee"; // default
+
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        userRole = user.role || "employee";
+      } catch (e) {
+        console.error("Error parsing user data:", e);
+      }
+    }
+
+    if (userRole === "admin") {
+      router.push("/admin/travel-expense/expense");
+    } else {
+      router.push("/employee/travel-expense");
+    }
+  };
+
   const cards = [
     {
       title: "Leave Management",
       route: "/admin/requests",
+      onClick: () => router.push("/admin/requests"),
     },
     {
       title: "Travel Expense Management",
       route: "/travel-expense",
+      onClick: handleTravelExpenseClick,
     },
   ];
 
@@ -35,11 +58,11 @@ const Main = () => {
       }}
     >
       <Grid container spacing={4} sx={{ maxWidth: 1200 }}>
-        {cards.map(({ title, route }, idx) => (
+        {cards.map(({ title, onClick }, idx) => (
           <Grid item xs={12} md={6} key={idx}>
             <Paper
               elevation={5}
-              onClick={() => router.push(route)}
+              onClick={onClick}
               sx={{
                 p: 6,
                 height: "100%",
@@ -49,7 +72,7 @@ const Main = () => {
                 boxShadow: "0 8px 20px rgba(0, 0, 0, 0.15)",
                 transition: "transform 0.3s ease, box-shadow 0.3s ease",
                 cursor: "pointer",
-                display: "flex", // center content
+                display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 "&:hover": {

@@ -197,44 +197,46 @@ const deleteUserById = async (req, res) => {
 const login = async (req, res) => {
   try {
     const { employeeCode, password } = req.body;
+    console.log("LOGIN BODY:", req.body);
 
-    const rules = {
-      employeeCode: "required",
-      password: "required|min:8",
-    };
-
+    const rules = { employeeCode: "required", password: "required|min:8" };
     const validation = new Validator(req.body, rules);
     if (validation.fails()) {
-      return res.status(400).json({
-        error: "Invalid input data",
-        validationErrors: validation.errors.all(),
-      });
+      console.log("VALIDATION ERR:", validation.errors.all());
+      return res.status(400).json({ error: "Invalid input data" });
     }
 
-    // Find user by employeeCode
-    const user = await User.findOne({ employeeCode });
+    const user = await User.findOne({
+      employeeCode: String(employeeCode).trim(),
+    });
+    console.log("FOUND USER:", !!user, user?.employeeCode);
+    if (!user) return res.status(401).json({ error: "User not found" });
 
-    if (!user) {
-      return res.status(401).json({ error: "User not found" });
-    }
-
-    // Compare hashed password
     const passwordMatch = await bcrypt.compare(password, user.password);
-    if (!passwordMatch) {
+    console.log("BCRYPT OK:", passwordMatch);
+    if (!passwordMatch)
       return res.status(401).json({ error: "Incorrect password" });
-    }
 
-    // Generate token
-    const token = jwt.sign({ userId: user._id }, SECRET_KEY);
+    // 🔥 FIX: Include employeeCode and other needed fields in JWT
+    const token = jwt.sign(
+      {
+        userId: user._id,
+        role: user.role,
+        employeeCode: user.employeeCode,
+        name: user.name,
+      },
+      "ipg-automotive",
+      {
+        expiresIn: "7d",
+      }
+    );
 
-    const userWithoutPassword = { ...user.toObject() };
+    const userWithoutPassword = user.toObject();
     delete userWithoutPassword.password;
 
-    return res.status(200).json({
-      message: "Login successful",
-      user: userWithoutPassword,
-      token,
-    });
+    return res
+      .status(200)
+      .json({ message: "Login successful", user: userWithoutPassword, token });
   } catch (error) {
     console.error("Login error:", error);
     return res.status(500).json({ error: "Internal server error" });
