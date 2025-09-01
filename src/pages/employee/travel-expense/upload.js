@@ -1,5 +1,18 @@
-"use client";
-
+import {
+  Add,
+  ArrowBack,
+  AttachMoney,
+  CalendarToday,
+  Category,
+  CloudUpload,
+  Delete,
+  Description,
+  Person,
+  Receipt,
+  Save,
+  Send,
+  TableChart,
+} from "@mui/icons-material";
 import {
   Alert,
   Avatar,
@@ -10,66 +23,186 @@ import {
   Chip,
   CircularProgress,
   Fade,
+  FormControl,
   Grid,
+  IconButton,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
-import {
-  AttachMoney,
-  CalendarToday,
-  CloudUpload,
-  Description,
-  Person,
-  Receipt,
-  Send,
-} from "@mui/icons-material";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 
+import { Home } from "@mui/icons-material";
+import { Logout } from "@mui/icons-material";
 import axios from "axios";
+import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
 
-export default function SubmitExpense() {
-  const router = useRouter();
+export default function BulkExpenseEntry() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [userInfo, setUserInfo] = useState({ name: "", empId: "" });
-
-  const [formData, setFormData] = useState({
-    expenseType: "travel",
-    amount: "",
-    description: "",
-    travelStartDate: new Date().toISOString().split("T")[0],
-    travelEndDate: new Date().toISOString().split("T")[0],
+  const [userInfo, setUserInfo] = useState({
+    name: "John Doe",
+    empId: "EMP001",
   });
-  const [file, setFile] = useState(null);
 
-  // Load user info from localStorage on component mount
+  // Edit mode state
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editExpenseData, setEditExpenseData] = useState(null);
+
+  const router = useRouter();
+
+  const expenseTypes = [
+    { value: "travel", label: "Travel" },
+    { value: "Breakfast", label: "Breakfast" },
+    { value: "Lunch", label: "Lunch" },
+    { value: "Dinner", label: "Dinner" },
+    { value: "accommodation", label: "Accommodation" },
+    { value: "transportation", label: "Transportation" },
+    { value: "fuel", label: "Fuel" },
+    { value: "office_supplies", label: "Office Supplies" },
+    { value: "training", label: "Training & Development" },
+    { value: "other", label: "Other" },
+  ];
+
+  const [expenses, setExpenses] = useState([
+    {
+      id: 1,
+      expenseType: "travel",
+      amount: "",
+      description: "",
+      travelStartDate: new Date().toISOString().split("T")[0],
+      travelEndDate: new Date().toISOString().split("T")[0],
+      file: null,
+      fileName: "",
+    },
+  ]);
+
+  // Check for edit mode on component mount
   useEffect(() => {
-    const userData = localStorage.getItem("user");
-    if (userData) {
+    const editData = localStorage.getItem("editExpense");
+    if (editData) {
       try {
-        const user = JSON.parse(userData);
-        setUserInfo({
-          name: user.name || "",
-          empId: user.employeeCode || user.empId || "",
-        });
-      } catch (e) {
-        console.error("Error parsing user data:", e);
+        const expense = JSON.parse(editData);
+        setIsEditMode(true);
+        setEditExpenseData(expense);
+
+        // Set up single expense for editing
+        setExpenses([
+          {
+            id: expense.id || 1,
+            expenseType: expense.expenseType,
+            amount: expense.amount.toString(),
+            description: expense.description,
+            travelStartDate: expense.travelStartDate,
+            travelEndDate: expense.travelEndDate,
+            file: null,
+            fileName: expense.fileName || "",
+            existingFile: !!expense.fileName,
+          },
+        ]);
+
+        // Clean up localStorage
+        localStorage.removeItem("editExpense");
+      } catch (error) {
+        console.error("Error parsing edit data:", error);
+        localStorage.removeItem("editExpense");
       }
     }
   }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // Load user info from localStorage or API on component mount
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const userData = localStorage.getItem("user");
+
+    if (userData) {
+      const user = JSON.parse(userData);
+      setUserInfo({
+        name: user.name || "John Doe",
+        empId: user.employeeCode || user.empId || "EMP001",
+      });
+    }
+  }, []);
+
+  const addNewExpense = () => {
+    const newExpense = {
+      id: Date.now(),
+      expenseType: "travel",
+      amount: "",
+      description: "",
+      travelStartDate: new Date().toISOString().split("T")[0],
+      travelEndDate: new Date().toISOString().split("T")[0],
+      file: null,
+      fileName: "",
+    };
+    setExpenses([...expenses, newExpense]);
+  };
+
+  const deleteExpense = (id) => {
+    if (expenses.length > 1) {
+      setExpenses(expenses.filter((exp) => exp.id !== id));
+    }
+  };
+
+  const updateExpense = (id, field, value) => {
+    setExpenses(
+      expenses.map((exp) => (exp.id === id ? { ...exp, [field]: value } : exp))
+    );
+  };
+
+  const handleFileChange = (id, file) => {
+    setExpenses(
+      expenses.map((exp) =>
+        exp.id === id
+          ? { ...exp, file, fileName: file?.name || "", existingFile: false }
+          : exp
+      )
+    );
+  };
+
+  const calculateTotalAmount = () => {
+    return expenses.reduce((total, expense) => {
+      const amount = parseFloat(expense.amount) || 0;
+      return total + amount;
+    }, 0);
+  };
+
+  const validateExpenses = () => {
+    for (let expense of expenses) {
+      if (
+        !expense.expenseType ||
+        !expense.amount ||
+        !expense.description ||
+        !expense.file
+      ) {
+        return false;
+      }
+      if (new Date(expense.travelStartDate) > new Date(expense.travelEndDate)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const handleEditSubmit = async () => {
     setLoading(true);
     setError("");
     setSuccess("");
 
-    // Validate dates
-    if (new Date(formData.travelStartDate) > new Date(formData.travelEndDate)) {
-      setError("Travel start date cannot be after end date");
+    if (!validateExpenses()) {
+      setError("Please fill in all required fields and ensure dates are valid");
       setLoading(false);
       return;
     }
@@ -77,463 +210,869 @@ export default function SubmitExpense() {
     try {
       const token = localStorage.getItem("token");
       if (!token) {
-        setError("Please login first");
+        setError("Authentication required. Please login again.");
+        setLoading(false);
         return;
       }
 
-      const data = new FormData();
-      Object.keys(formData).forEach((key) => {
-        data.append(key, formData[key]);
-      });
+      const expense = expenses[0]; // Only one expense in edit mode
+      const formData = new FormData();
 
-      if (file) {
-        data.append("receipt", file);
+      // Add expense data
+      formData.append("expenseType", expense.expenseType);
+      formData.append("amount", parseFloat(expense.amount));
+      formData.append("description", expense.description);
+      formData.append("travelStartDate", expense.travelStartDate);
+      formData.append("travelEndDate", expense.travelEndDate);
+
+      // Add file if present
+      if (expense.file) {
+        formData.append("file", expense.file);
       }
 
-      const response = await axios.post(
-        "http://localhost:4000/api/expenses",
-        data,
+      // Add bulk submission info if editing from bulk submission
+      if (editExpenseData.bulkSubmissionId) {
+        formData.append("bulkSubmissionId", editExpenseData.bulkSubmissionId);
+        formData.append(
+          "bulkSubmissionIndex",
+          editExpenseData.bulkSubmissionIndex
+        );
+      }
+
+      const response = await axiosInstance.put(
+        `/expenses/${editExpenseData.id}`,
+        formData,
         {
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "multipart/form-data",
           },
+          timeout: 30000,
         }
       );
 
-      setSuccess("Expense submitted successfully!");
+      const result = response.data;
 
-      // Redirect after 2 seconds
-      setTimeout(() => {
-        router.push("/employee/travel-expense");
-      }, 2000);
+      if (result.success) {
+        setSuccess(result.message || "Expense updated successfully");
+
+        // Redirect to index page after 2 seconds
+        setTimeout(() => {
+          router.push("/employee/travel-expense");
+        }, 2000);
+      } else {
+        setError(result.error || "Failed to update expense");
+      }
     } catch (error) {
-      setError(error.response?.data?.error || "Something went wrong");
+      console.error("Update error:", error);
+
+      if (error.response) {
+        const status = error.response.status;
+        const errorMessage =
+          error.response.data?.error ||
+          error.response.data?.message ||
+          "Server error occurred";
+
+        if (status === 413) {
+          setError("Request too large. Please reduce file size.");
+        } else if (status === 401) {
+          setError("Session expired. Please login again.");
+        } else {
+          setError(errorMessage);
+        }
+      } else if (error.request) {
+        setError("Network error. Please check your connection and try again.");
+      } else if (error.code === "ECONNABORTED") {
+        setError("Request timeout. Please try again with a smaller file.");
+      } else {
+        setError(
+          error.message || "Something went wrong while updating expense"
+        );
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleInputChange = (field) => (e) => {
-    setFormData({ ...formData, [field]: e.target.value });
+  const handleSubmitAll = async () => {
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    if (!validateExpenses()) {
+      setError("Please fill in all required fields and ensure dates are valid");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        setError("Authentication required. Please login again.");
+        setLoading(false);
+        return;
+      }
+
+      // Create FormData to handle files efficiently
+      const formData = new FormData();
+
+      // Prepare expenses data without file data
+      const expensesToSubmit = expenses.map((expense, index) => {
+        console.log(`Processing expense ${index + 1}:`, expense);
+
+        const expenseData = {
+          expenseType: expense.expenseType,
+          amount: parseFloat(expense.amount),
+          description: expense.description,
+          travelStartDate: expense.travelStartDate,
+          travelEndDate: expense.travelEndDate,
+          hasFile: !!expense.file,
+          fileIndex: expense.file ? index : null,
+        };
+
+        // Add file to FormData if present
+        if (expense.file) {
+          console.log(
+            `Adding file for expense ${index + 1}:`,
+            expense.file.name
+          );
+          formData.append("files", expense.file);
+        }
+
+        return expenseData;
+      });
+
+      // Add expenses data as JSON string to FormData
+      formData.append("expenses", JSON.stringify(expensesToSubmit));
+
+      console.log("Final expenses to submit:", expensesToSubmit);
+      console.log("Total expenses count:", expensesToSubmit.length);
+      // Debug FormData contents
+      console.log("FormData entries:");
+      for (let [key, value] of formData.entries()) {
+        console.log(key, value);
+      }
+
+      // Or check if specific keys exist
+      console.log("Has expenses key:", formData.has("expenses"));
+      console.log("Has file_0 key:", formData.has("file_0"));
+
+      // Make API call to submit bulk expenses using FormData
+      const response = await axios.post(
+        "http://IPGNB10348:4000/expenses/bulk-submit",
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data",
+          },
+          timeout: 50000, // 50 seconds timeout for bulk upload
+        }
+      );
+
+      const result = response.data;
+
+      if (result.success) {
+        setSuccess(result.message);
+
+        // Redirect to index page after 2 seconds
+        setTimeout(() => {
+          router.push("/employee/travel-expense");
+        }, 2000);
+      } else {
+        setError(result.error || "Failed to submit expenses");
+      }
+    } catch (error) {
+      console.error("Submit error:", error);
+
+      // Handle axios error responses
+      if (error.response) {
+        // Server responded with error status
+        const status = error.response.status;
+        const errorMessage =
+          error.response.data?.error ||
+          error.response.data?.message ||
+          "Server error occurred";
+
+        if (status === 413) {
+          setError(
+            "Request too large. Please reduce file sizes or submit fewer expenses at once."
+          );
+        } else if (status === 401) {
+          setError("Session expired. Please login again.");
+        } else {
+          setError(errorMessage);
+        }
+      } else if (error.request) {
+        setError("Network error. Please check your connection and try again.");
+      } else if (error.code === "ECONNABORTED") {
+        setError(
+          "Request timeout. Please try again with fewer expenses or smaller files."
+        );
+      } else {
+        setError(
+          error.message || "Something went wrong while submitting expenses"
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const FileUploadCell = ({ expense }) => {
+    const fileSize = expense.file?.size / 1024 / 1000;
+    const hasExistingFile = expense.existingFile && !expense.file;
+    const hasNewFile = !!expense.file;
+
+    return (
+      <Box sx={{ position: "relative", minWidth: 200 }}>
+        <Box
+          sx={{
+            border: "1px dashed",
+            borderColor: hasNewFile
+              ? fileSize <= 1
+                ? "success.main"
+                : "error.main"
+              : hasExistingFile
+              ? "info.main"
+              : "grey.300",
+            borderRadius: 1,
+            p: 1,
+            textAlign: "center",
+            backgroundColor: hasNewFile
+              ? fileSize <= 1
+                ? "rgba(76, 175, 80, 0.05)"
+                : "rgba(244, 67, 54, 0.05)"
+              : hasExistingFile
+              ? "rgba(25, 118, 210, 0.05)"
+              : "rgba(0, 0, 0, 0.02)",
+            cursor: "pointer",
+            minHeight: 40,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            "&:hover": {
+              borderColor: "primary.main",
+              backgroundColor: "rgba(25, 118, 210, 0.05)",
+            },
+          }}
+        >
+          <input
+            type="file"
+            accept=".jpg,.jpeg,.png,.pdf"
+            onChange={(e) => handleFileChange(expense.id, e.target.files[0])}
+            style={{
+              position: "absolute",
+              width: "100%",
+              height: "100%",
+              opacity: 0,
+              cursor: "pointer",
+            }}
+          />
+          {hasNewFile ? (
+            <Tooltip
+              title={`${expense.fileName} (${(expense.file.size / 1024).toFixed(
+                1
+              )} KB)`}
+            >
+              <Chip
+                label={
+                  expense.fileName.length > 15
+                    ? `${expense.fileName.substring(0, 15)}...`
+                    : expense.fileName
+                }
+                color={fileSize <= 1 ? "success" : "error"}
+                size="small"
+                variant="outlined"
+              />
+            </Tooltip>
+          ) : hasExistingFile ? (
+            <Tooltip title={`Current file: ${expense.fileName}`}>
+              <Chip
+                label={
+                  expense.fileName.length > 15
+                    ? `${expense.fileName.substring(0, 15)}...`
+                    : expense.fileName
+                }
+                color="info"
+                size="small"
+                variant="outlined"
+              />
+            </Tooltip>
+          ) : (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <CloudUpload sx={{ fontSize: 16, color: "grey.500" }} />
+              <Typography variant="caption" color="text.secondary">
+                Upload
+              </Typography>
+            </Box>
+          )}
+        </Box>
+      </Box>
+    );
+  };
+
+  const handleBack = () => {
+    router.push("/employee/travel-expense");
+  };
+
+  const handleHome = () => {
+    router.push("/main");
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    router.push("/login");
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        backgroundColor: "#f8f9fa",
-        py: 2,
-        px: 1,
-        overflow: "hidden", // Prevent any overflow
-        width: "100%",
-        boxSizing: "border-box",
-      }}
-    >
+    <>
+      {/* Header */}
       <Box
         sx={{
-          maxWidth: 600,
-          mx: "auto",
-          width: "100%",
-          boxSizing: "border-box",
+          position: "sticky",
+          top: 0,
+          zIndex: 1000,
+          backdropFilter: "blur(20px)",
+          backgroundColor: "rgba(255, 255, 255, 0.85)",
+          borderBottom: "1px solid rgba(255, 255, 255, 0.18)",
+          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.1)",
         }}
       >
-        {/* Header Section */}
-        <Box sx={{ textAlign: "center", mb: 3 }}>
-          <Avatar
+        <Box sx={{ mx: "auto", px: 2, py: 2 }}>
+          <Box
             sx={{
-              width: 48,
-              height: 48,
-              mx: "auto",
-              mb: 1,
-              bgcolor: "primary.main",
-              fontSize: "1.5rem",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
             }}
           >
-            <Receipt />
-          </Avatar>
-          <Typography
-            variant="h5"
-            gutterBottom
-            sx={{
-              fontWeight: 600,
-              color: "text.primary",
-              mb: 0.5,
-            }}
-          >
-            Submit Travel Expense
-          </Typography>
-        </Box>
+            <Box sx={{ display: "flex", alignItems: "center" }}>
+              <Avatar
+                sx={{ width: 40, height: 40, mr: 2, bgcolor: "primary.main" }}
+              >
+                <TableChart />
+              </Avatar>
+              <Box>
+                <Typography
+                  variant="h5"
+                  sx={{ fontWeight: 700, color: "text.primary" }}
+                >
+                  Submit Travel Expenses
+                </Typography>
+                {/* <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                  Track your expense submissions
+                </Typography> */}
+              </Box>
+            </Box>
 
-        {/* Main Card */}
-        <Card
-          elevation={4}
-          sx={{
-            borderRadius: 3,
-            overflow: "hidden",
-            backgroundColor: "white",
-            width: "100%",
-            boxSizing: "border-box",
-          }}
-        >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <IconButton sx={{ color: "primary.light" }} onClick={handleHome}>
+                <Home />
+              </IconButton>
+              <IconButton sx={{ color: "error.main" }} onClick={handleLogout}>
+                <Logout />
+              </IconButton>
+              <Button
+                variant="outlined"
+                startIcon={<ArrowBack />}
+                onClick={handleBack}
+                sx={{
+                  borderRadius: "8px",
+                  fontSize: "0.6rem",
+                  fontWeight: 600,
+                  p: 1,
+                  ml: 1,
+                }}
+              >
+                Back to Expenses
+              </Button>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+
+      <Box sx={{ py: 2, px: 3, mt: 2 }}>
+        <Box sx={{ maxWidth: "100%", mx: "auto" }}>
           {/* Alerts */}
           {error && (
             <Fade in>
-              <Alert
-                severity="error"
-                sx={{
-                  m: 2,
-                  borderRadius: 2,
-                  fontSize: "0.9rem",
-                }}
-              >
+              <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
                 {error}
               </Alert>
             </Fade>
           )}
           {success && (
             <Fade in>
-              <Alert
-                severity="success"
-                sx={{
-                  m: 2,
-                  borderRadius: 2,
-                  fontSize: "0.9rem",
-                }}
-              >
+              <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>
                 {success}
+                <br />
+                <Typography variant="body2" sx={{ mt: 1, fontStyle: "italic" }}>
+                  Redirecting to dashboard...
+                </Typography>
               </Alert>
             </Fade>
           )}
 
-          <CardContent sx={{ p: 2 }}>
-            {/* Employee Info Section */}
-            <Paper
-              elevation={2}
-              sx={{
-                p: 2,
-                mb: 2,
-                borderRadius: 2,
-                background: "linear-gradient(45deg, #f8f9ff, #e8f0ff)",
-                border: "1px solid rgba(103, 126, 234, 0.1)",
-              }}
-            >
-              <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                <Person sx={{ mr: 1, color: "primary.main", fontSize: 20 }} />
-                <Typography variant="subtitle1" fontWeight={600}>
-                  Employee Information
-                </Typography>
-              </Box>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label="Employee Name"
-                    value={userInfo.name}
-                    fullWidth
-                    disabled
-                    variant="filled"
-                    size="small"
-                    sx={{
-                      "& .MuiFilledInput-root": {
-                        borderRadius: 1,
-                        backgroundColor: "rgba(255, 255, 255, 0.8)",
-                      },
-                    }}
-                    InputProps={{
-                      startAdornment: (
-                        <Person
-                          sx={{ m: 1, color: "primary.main", fontSize: 18 }}
-                        />
-                      ),
-                    }}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label="Employee ID"
-                    value={userInfo.empId}
-                    fullWidth
-                    disabled
-                    variant="filled"
-                    size="small"
-                    sx={{
-                      "& .MuiFilledInput-root": {
-                        borderRadius: 1,
-                        backgroundColor: "rgba(255, 255, 255, 0.8)",
-                      },
-                    }}
-                    InputProps={{
-                      startAdornment: (
-                        <Chip
-                          label="ID"
-                          size="small"
-                          sx={{ mr: 1, height: 16, fontSize: 10 }}
-                        />
-                      ),
-                    }}
-                  />
-                </Grid>
-              </Grid>
-            </Paper>
-
-            <form onSubmit={handleSubmit}>
-              {/* Amount Section */}
-              <Paper
-                elevation={1}
+          {/* Employee Info */}
+          {/* <Paper
+          elevation={2}
+          sx={{
+            p: 2,
+            mb: 3,
+            backgroundColor: "gray.50",
+            borderRadius: 3,
+            boxShadow: 3,
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+            <Person sx={{ mr: 1, fontSize: 24 }} />
+            <Typography variant="h6" fontWeight={600}>
+              Employee Information
+            </Typography>
+            {isEditMode && (
+              <Chip
+                label="EDIT MODE"
+                size="small"
                 sx={{
-                  p: 2,
-                  mb: 2,
-                  borderRadius: 2,
-                  border: "1px solid rgba(0, 0, 0, 0.08)",
+                  ml: 2,
+                  bgcolor: "rgba(255,255,255,0.2)",
+                  color: "white",
+                  fontWeight: 600,
                 }}
-              >
-                <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                  <AttachMoney
-                    sx={{ mr: 1, color: "success.main", fontSize: 20 }}
-                  />
-                  <Typography variant="subtitle1" fontWeight={600}>
-                    Expense Amount
-                  </Typography>
-                </Box>
-                <TextField
-                  label="Amount"
-                  type="number"
-                  value={formData.amount}
-                  onChange={handleInputChange("amount")}
-                  fullWidth
-                  required
-                  variant="outlined"
-                  size="small"
-                  inputProps={{ min: 0, step: 0.01 }}
-                  sx={{
-                    "& .MuiOutlinedInput-root": {
-                      borderRadius: 1,
-                    },
-                  }}
-                  InputProps={{
-                    startAdornment: (
-                      <Typography
-                        variant="body1"
-                        sx={{ mr: 1, color: "success.main", fontWeight: 600 }}
+              />
+            )}
+          </Box>
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={6}>
+              <Typography variant="body2" sx={{ opacity: 0.8, mb: 0.5 }}>
+                Employee Name
+              </Typography>
+              <Typography variant="h6" fontWeight={500}>
+                {userInfo.name}
+              </Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Typography variant="body2" sx={{ opacity: 0.8, mb: 0.5 }}>
+                Employee ID
+              </Typography>
+              <Typography variant="h6" fontWeight={500}>
+                {userInfo.empId}
+              </Typography>
+            </Grid>
+          </Grid>
+        </Paper> */}
+
+          {/* Expenses Table */}
+          <Card
+            elevation={3}
+            sx={{ borderRadius: 3, overflow: "hidden", mb: 3 }}
+          >
+            <CardContent sx={{ p: 0 }}>
+              <TableContainer sx={{ maxHeight: 600 }}>
+                <Table stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell
+                        sx={{
+                          fontWeight: 600,
+                          bgcolor: "primary.main",
+                          color: "white",
+                        }}
                       >
-                        ₹
-                      </Typography>
-                    ),
-                  }}
-                />
-              </Paper>
+                        Sl No.
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          fontWeight: 600,
+                          bgcolor: isEditMode ? "warning.main" : "primary.main",
+                          color: "white",
+                          minWidth: 150,
+                        }}
+                      >
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
+                          <Category sx={{ fontSize: 16 }} />
+                          Expense Type
+                        </Box>
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          fontWeight: 600,
+                          bgcolor: isEditMode ? "warning.main" : "primary.main",
+                          color: "white",
+                          minWidth: 120,
+                        }}
+                      >
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
+                          <AttachMoney sx={{ fontSize: 16 }} />
+                          Amount (₹)
+                        </Box>
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          fontWeight: 600,
+                          bgcolor: isEditMode ? "warning.main" : "primary.main",
+                          color: "white",
+                          minWidth: 200,
+                        }}
+                      >
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
+                          <Description sx={{ fontSize: 16 }} />
+                          Description
+                        </Box>
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          fontWeight: 600,
+                          bgcolor: isEditMode ? "warning.main" : "primary.main",
+                          color: "white",
+                          minWidth: 150,
+                        }}
+                      >
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
+                          <CalendarToday sx={{ fontSize: 16 }} />
+                          Start Date
+                        </Box>
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          fontWeight: 600,
+                          bgcolor: isEditMode ? "warning.main" : "primary.main",
+                          color: "white",
+                          minWidth: 150,
+                        }}
+                      >
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
+                          <CalendarToday sx={{ fontSize: 16 }} />
+                          End Date
+                        </Box>
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          fontWeight: 600,
+                          bgcolor: isEditMode ? "warning.main" : "primary.main",
+                          color: "white",
+                          minWidth: 200,
+                        }}
+                      >
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
+                          <Receipt sx={{ fontSize: 16 }} />
+                          Receipt
+                        </Box>
+                      </TableCell>
+                      {!isEditMode && (
+                        <TableCell
+                          sx={{
+                            fontWeight: 600,
+                            bgcolor: "primary.main",
+                            color: "white",
+                            width: 60,
+                          }}
+                        >
+                          Actions
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {expenses.map((expense, index) => (
+                      <TableRow key={expense.id} hover>
+                        <TableCell
+                          sx={{
+                            fontWeight: 600,
+                            color: isEditMode ? "warning.main" : "primary.main",
+                          }}
+                        >
+                          {index + 1}
+                        </TableCell>
+                        <TableCell>
+                          <FormControl fullWidth size="small">
+                            <Select
+                              value={expense.expenseType}
+                              onChange={(e) =>
+                                updateExpense(
+                                  expense.id,
+                                  "expenseType",
+                                  e.target.value
+                                )
+                              }
+                              displayEmpty
+                            >
+                              {expenseTypes.map((type) => (
+                                <MenuItem key={type.value} value={type.value}>
+                                  {type.label}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            type="number"
+                            value={expense.amount}
+                            onChange={(e) =>
+                              updateExpense(
+                                expense.id,
+                                "amount",
+                                e.target.value
+                              )
+                            }
+                            fullWidth
+                            size="small"
+                            placeholder="0.00"
+                            inputProps={{ min: 0, step: 0.01 }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            value={expense.description}
+                            onChange={(e) =>
+                              updateExpense(
+                                expense.id,
+                                "description",
+                                e.target.value
+                              )
+                            }
+                            fullWidth
+                            size="small"
+                            placeholder="Enter description..."
+                            multiline
+                            maxRows={2}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            type="date"
+                            value={expense.travelStartDate}
+                            onChange={(e) =>
+                              updateExpense(
+                                expense.id,
+                                "travelStartDate",
+                                e.target.value
+                              )
+                            }
+                            fullWidth
+                            size="small"
+                            InputLabelProps={{ shrink: true }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            type="date"
+                            value={expense.travelEndDate}
+                            onChange={(e) =>
+                              updateExpense(
+                                expense.id,
+                                "travelEndDate",
+                                e.target.value
+                              )
+                            }
+                            fullWidth
+                            size="small"
+                            InputLabelProps={{ shrink: true }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <FileUploadCell expense={expense} />
+                        </TableCell>
+                        {!isEditMode && (
+                          <TableCell>
+                            <Tooltip
+                              title={
+                                expenses.length === 1
+                                  ? "Cannot delete the last expense"
+                                  : "Delete expense"
+                              }
+                            >
+                              <span>
+                                <IconButton
+                                  onClick={() => deleteExpense(expense.id)}
+                                  disabled={expenses.length === 1}
+                                  size="small"
+                                  color="error"
+                                >
+                                  <Delete />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
 
-              {/* Travel Dates Section */}
-              <Paper
-                elevation={1}
-                sx={{
-                  p: 2,
-                  mb: 2,
-                  borderRadius: 2,
-                  border: "1px solid rgba(0, 0, 0, 0.08)",
-                }}
+              <Box
+                display="flex"
+                alignItems="space-between"
+                gap={1}
+                sx={{ pt: 2, pr: 2 }}
               >
-                <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                  <CalendarToday
-                    sx={{ mr: 1, color: "info.main", fontSize: 20 }}
-                  />
-                  <Typography variant="subtitle1" fontWeight={600}>
-                    Travel Period
-                  </Typography>
-                </Box>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      label="Travel Start Date"
-                      type="date"
-                      value={formData.travelStartDate}
-                      onChange={handleInputChange("travelStartDate")}
-                      fullWidth
-                      required
-                      size="small"
-                      InputLabelProps={{ shrink: true }}
-                      sx={{
-                        "& .MuiOutlinedInput-root": {
-                          borderRadius: 1,
-                        },
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      label="Travel End Date"
-                      type="date"
-                      value={formData.travelEndDate}
-                      onChange={handleInputChange("travelEndDate")}
-                      fullWidth
-                      required
-                      size="small"
-                      InputLabelProps={{ shrink: true }}
-                      sx={{
-                        "& .MuiOutlinedInput-root": {
-                          borderRadius: 1,
-                        },
-                      }}
-                    />
-                  </Grid>
-                </Grid>
-              </Paper>
-
-              {/* Description Section */}
-              <Paper
-                elevation={1}
-                sx={{
-                  p: 2,
-                  mb: 2,
-                  borderRadius: 2,
-                  border: "1px solid rgba(0, 0, 0, 0.08)",
-                }}
-              >
-                <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                  <Description
-                    sx={{ mr: 1, color: "warning.main", fontSize: 20 }}
-                  />
-                  <Typography variant="subtitle1" fontWeight={600}>
-                    Expense Details
-                  </Typography>
-                </Box>
-                <TextField
-                  label="Description"
-                  value={formData.description}
-                  onChange={handleInputChange("description")}
-                  fullWidth
-                  required
-                  multiline
-                  rows={3}
-                  size="small"
-                  placeholder="Describe the expense (e.g., Taxi from airport to hotel, Flight tickets, Hotel accommodation, etc.)"
+                <Typography flex={1}>{"  "}</Typography>
+                <Button
+                  onClick={addNewExpense}
+                  variant="outlined"
+                  startIcon={<Add />}
+                  disabled={loading}
                   sx={{
-                    "& .MuiOutlinedInput-root": {
-                      borderRadius: 1,
-                    },
-                  }}
-                />
-              </Paper>
-
-              {/* File Upload Section */}
-              <Paper
-                elevation={1}
-                sx={{
-                  p: 2,
-                  mb: 2,
-                  borderRadius: 2,
-                  border: "1px solid rgba(0, 0, 0, 0.08)",
-                }}
-              >
-                <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                  <CloudUpload
-                    sx={{ mr: 1, color: "secondary.main", fontSize: 20 }}
-                  />
-                  <Typography variant="subtitle1" fontWeight={600}>
-                    Receipt Upload
-                  </Typography>
-                </Box>
-                <Box
-                  sx={{
-                    position: "relative",
-                    border: "2px dashed",
-                    borderColor: file ? "success.main" : "grey.300",
+                    py: 1,
+                    px: 1,
                     borderRadius: 2,
-                    p: 3,
-                    textAlign: "center",
-                    backgroundColor: file
-                      ? "rgba(76, 175, 80, 0.05)"
-                      : "rgba(0, 0, 0, 0.02)",
-                    transition: "all 0.3s ease",
-                    cursor: "pointer",
+                    fontSize: "0.6rem",
+                    fontWeight: 600,
+                    borderColor: "primary.main",
                     "&:hover": {
-                      borderColor: "primary.main",
-                      backgroundColor: "rgba(103, 126, 234, 0.05)",
+                      transform: "translateY(-2px)",
+                      boxShadow: "0 4px 15px rgba(25, 118, 210, 0.2)",
                     },
                   }}
                 >
-                  <input
-                    type="file"
-                    accept=".jpg,.jpeg,.png,.pdf"
-                    onChange={(e) => setFile(e.target.files[0])}
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "100%",
-                      height: "100%",
-                      opacity: 0,
-                      cursor: "pointer",
-                    }}
-                  />
-                  <CloudUpload
-                    sx={{
-                      fontSize: 32,
-                      color: file ? "success.main" : "grey.400",
-                      mb: 1,
-                    }}
-                  />
-                  <Typography variant="body2" gutterBottom fontWeight={500}>
-                    {file ? "Receipt Uploaded!" : "Upload Receipt"}
-                  </Typography>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    display="block"
-                    sx={{ mb: 1 }}
-                  >
-                    JPG, PNG, PDF - Max 1MB
-                  </Typography>
-                  {file && (
-                    <Chip
-                      label={`${file.name} (${(file.size / 1024).toFixed(
-                        1
-                      )} KB)`}
-                      color="success"
-                      variant="outlined"
-                      size="small"
-                    />
-                  )}
-                </Box>
-              </Paper>
+                  Add New Expense
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
 
+          {/* Action Buttons and Summary */}
+          <Box
+            display="flex"
+            justifyContent="space-between"
+            alignItems="center"
+            flexDirection={{ xs: "column", md: "row" }}
+            gap={2}
+          >
+            <Box>
+              {/* Total Summary */}
+              <Paper
+                elevation={1}
+                sx={{
+                  p: 1.5,
+                  borderRadius: 2,
+                  background:
+                    "linear-gradient(135deg, #c9dffaff 0%, #e0eff9ff 100%)",
+                  minWidth: 180,
+                }}
+              >
+                <Typography variant="body2" sx={{ opacity: 0.9, mb: 0.5 }}>
+                  Total Amount :{" "}
+                  <strong>₹ {calculateTotalAmount().toFixed(2)}</strong>
+                </Typography>
+              </Paper>
+            </Box>
+            <Box>
               {/* Submit Button */}
               <Button
-                type="submit"
+                onClick={isEditMode ? handleEditSubmit : handleSubmitAll}
                 variant="contained"
-                fullWidth
                 size="large"
-                disabled={loading}
-                sx={{
-                  py: 1.5,
-                  borderRadius: 2,
-                  fontSize: "1rem",
-                  fontWeight: 600,
-                  backgroundColor: "primary.main",
-                  "&:hover": {
-                    backgroundColor: "primary.dark",
-                    transform: "translateY(-1px)",
-                    boxShadow: "0 4px 15px rgba(25, 118, 210, 0.3)",
-                  },
-                  "&:disabled": {
-                    transform: "none",
-                  },
-                  transition: "all 0.3s ease",
-                }}
+                disabled={loading || expenses.length === 0}
                 startIcon={
                   loading ? (
                     <CircularProgress size={20} color="inherit" />
+                  ) : isEditMode ? (
+                    <Save />
                   ) : (
                     <Send />
                   )
                 }
+                sx={{
+                  py: 1.5,
+                  px: 2,
+                  borderRadius: 2,
+                  fontSize: "0.7rem",
+                  fontWeight: 600,
+                  background: "secondary",
+                  "&:disabled": {
+                    background: "rgba(0, 0, 0, 0.12)",
+                  },
+                }}
               >
-                {loading ? "Submitting..." : "Submit Expense"}
+                {loading
+                  ? isEditMode
+                    ? "Updating..."
+                    : "Submitting..."
+                  : isEditMode
+                  ? "Update Expense"
+                  : `Submit All (${expenses.length})`}
               </Button>
-            </form>
-          </CardContent>
-        </Card>
+            </Box>
+          </Box>
+
+          {/* Instructions */}
+          <Paper
+            elevation={1}
+            sx={{
+              p: 3,
+              mt: 4,
+              borderRadius: 2,
+              bgcolor: isEditMode
+                ? "rgba(255, 152, 0, 0.05)"
+                : "rgba(25, 118, 210, 0.05)",
+              border: isEditMode
+                ? "1px solid rgba(255, 152, 0, 0.1)"
+                : "1px solid rgba(25, 118, 210, 0.1)",
+            }}
+          >
+            <Typography
+              variant="h6"
+              gutterBottom
+              color={isEditMode ? "warning.main" : "primary"}
+              fontWeight={600}
+            >
+              {isEditMode ? "Edit Instructions:" : "Instructions:"}
+            </Typography>
+            <Box component="ul" sx={{ m: 0, pl: 2 }}>
+              {isEditMode ? (
+                <>
+                  <Typography component="li" variant="body2" sx={{ mb: 1 }}>
+                    Update any fields that need correction
+                  </Typography>
+                  <Typography component="li" variant="body2" sx={{ mb: 1 }}>
+                    Upload a new receipt if needed (JPG, PNG, or PDF format, max
+                    1MB)
+                  </Typography>
+                  <Typography component="li" variant="body2" sx={{ mb: 1 }}>
+                    Ensure travel end date is not before start date
+                  </Typography>
+                  <Typography component="li" variant="body2">
+                    Click Update Expense to resubmit for approval
+                  </Typography>
+                </>
+              ) : (
+                <>
+                  <Typography component="li" variant="body2" sx={{ mb: 1 }}>
+                    Fill in all the required fields for each expense entry
+                  </Typography>
+                  <Typography component="li" variant="body2" sx={{ mb: 1 }}>
+                    Upload receipts in JPG, PNG, or PDF format (max 1MB each)
+                  </Typography>
+                  <Typography component="li" variant="body2" sx={{ mb: 1 }}>
+                    Ensure travel end date is not before start date
+                  </Typography>
+                  <Typography component="li" variant="body2">
+                    Use Add New Expense to add more entries to the table
+                  </Typography>
+                </>
+              )}
+            </Box>
+          </Paper>
+        </Box>
       </Box>
-    </Box>
+    </>
   );
 }

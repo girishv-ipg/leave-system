@@ -1,20 +1,23 @@
-// pages/travel-expense/index.js
-"use client";
+// pages/employee/index.js
 
 import {
   Add,
-  Assessment,
   AttachMoney,
   CalendarToday,
   Cancel,
   CheckCircle,
+  CloudUpload,
+  Delete,
   Description,
+  Edit,
+  ExpandLess,
+  ExpandMore,
   Home,
   Logout,
+  Person,
   Receipt,
   Schedule,
   TrendingUp,
-  Visibility,
 } from "@mui/icons-material";
 import {
   Alert,
@@ -25,67 +28,87 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Fade,
+  FormControl,
   Grid,
   IconButton,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Stack,
-  Tab,
-  Tabs,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 
-import axios from "axios";
+import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
 
-export default function EmployeeExpenses() {
-  const router = useRouter();
-  const [expenses, setExpenses] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("all");
-  const [error, setError] = useState("");
+export default function ExpenseIndex() {
+  const [bulkSubmissions, setBulkSubmissions] = useState([]);
+  const [expandedSubmission, setExpandedSubmission] = useState(null);
   const [selectedExpense, setSelectedExpense] = useState(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    expenseType: "",
+    amount: "",
+    description: "",
+    travelStartDate: "",
+    travelEndDate: "",
+  });
+  const [newFile, setNewFile] = useState(null);
 
-  const statusTabs = [
-    { value: "all", label: "All", icon: <Assessment /> },
-    { value: "pending", label: "Pending", icon: <Schedule /> },
-    { value: "approved", label: "Approved", icon: <CheckCircle /> },
-    { value: "rejected", label: "Rejected", icon: <Cancel /> },
-  ];
+  const router = useRouter();
 
-  const fetchExpenses = async (status = "all") => {
-    setLoading(true);
-    setError("");
+  // Fetch expenses from API
+  useEffect(() => {
+    fetchExpenses();
+  }, []);
+
+  const fetchExpenses = async () => {
     try {
+      setLoading(true);
+      setError(null);
       const token = localStorage.getItem("token");
       if (!token) {
         setError("Please login first");
         return;
       }
 
-      const response = await axios.get("http://localhost:4000/api/expenses", {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { status },
+      const response = await axiosInstance.get("/expenses", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
-      setExpenses(response.data.expenses);
-    } catch (error) {
-      console.error("Error fetching expenses:", error);
-      setError(error.response?.data?.error || "Failed to fetch expenses");
+
+      if (response.data.success) {
+        setBulkSubmissions(response.data.data);
+      } else {
+        setError("Failed to fetch expenses");
+      }
+    } catch (err) {
+      console.error("Error fetching expenses:", err);
+      setError("Failed to load expenses. Please try again.");
     } finally {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    fetchExpenses(activeTab);
-  }, [activeTab]);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -109,21 +132,142 @@ export default function EmployeeExpenses() {
       case "pending":
         return <Schedule />;
       default:
-        return <Assessment />;
+        return <Schedule />;
     }
   };
 
-  const viewDocument = async (expenseId) => {
+  const getSubmissionStatus = (expenses) => {
+    const statuses = expenses.map((exp) => exp.status);
+    if (statuses.every((status) => status === "approved")) return "approved";
+    if (statuses.some((status) => status === "rejected")) return "rejected";
+    return "pending";
+  };
+
+  const getStatusCounts = (expenses) => {
+    return expenses.reduce((acc, exp) => {
+      acc[exp.status] = (acc[exp.status] || 0) + 1;
+      return acc;
+    }, {});
+  };
+
+  const calculateTotals = () => {
+    const allExpenses = bulkSubmissions.flatMap(
+      (submission) => submission.expenses
+    );
+    return allExpenses.reduce(
+      (acc, expense) => {
+        acc.total += parseFloat(expense.amount) || 0;
+        if (expense.status === "approved")
+          acc.approved += parseFloat(expense.amount) || 0;
+        if (expense.status === "pending")
+          acc.pending += parseFloat(expense.amount) || 0;
+        if (expense.status === "rejected")
+          acc.rejected += parseFloat(expense.amount) || 0;
+        return acc;
+      },
+      { total: 0, approved: 0, pending: 0, rejected: 0 }
+    );
+  };
+
+  const toggleExpanded = (submissionId) => {
+    setExpandedSubmission(
+      expandedSubmission === submissionId ? null : submissionId
+    );
+  };
+
+  const handleEditExpense = (expense) => {
+    setSelectedExpense(expense);
+    setEditFormData({
+      expenseType: expense.expenseType,
+      amount: expense.amount.toString(),
+      description: expense.description,
+      travelStartDate: expense.travelStartDate,
+      travelEndDate: expense.travelEndDate,
+    });
+    setNewFile(null);
+    setEditDialogOpen(true);
+  };
+
+  const handleFormChange = (field, value) => {
+    setEditFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    setNewFile(file);
+  };
+
+  const handleSaveExpense = async () => {
     try {
+      setEditLoading(true);
       const token = localStorage.getItem("token");
-      const response = await axios.get(
-        `http://localhost:4000/api/expenses/${expenseId}`,
+
+      // Create FormData for the update
+      const formData = new FormData();
+      formData.append("expenseType", editFormData.expenseType);
+      formData.append("amount", editFormData.amount);
+      formData.append("description", editFormData.description);
+      formData.append("travelStartDate", editFormData.travelStartDate);
+      formData.append("travelEndDate", editFormData.travelEndDate);
+
+      // Add new file if selected
+      if (newFile) {
+        formData.append("file", newFile);
+      }
+
+      const response = await axiosInstance.put(
+        `/expenses/${selectedExpense._id}`,
+        formData,
         {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data",
+          },
         }
       );
 
+      if (response.data.success) {
+        setEditDialogOpen(false);
+        setSelectedExpense(null);
+        setNewFile(null);
+        fetchExpenses(); // Refresh the list
+        // Show success message (you can add a snackbar here)
+      } else {
+        setError("Failed to update expense");
+      }
+    } catch (err) {
+      console.error("Error updating expense:", err);
+      setError("Failed to update expense. Please try again.");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleCloseEditDialog = () => {
+    setEditDialogOpen(false);
+    setSelectedExpense(null);
+    setNewFile(null);
+    setEditFormData({
+      expenseType: "",
+      amount: "",
+      description: "",
+      travelStartDate: "",
+      travelEndDate: "",
+    });
+  };
+
+  const handleViewDocument = async (id) => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axiosInstance.get(`/expenses/${id}/fileData`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
       const expense = response.data;
+      console.log("respnse of expense => ", expense);
       if (expense.fileData) {
         const byteCharacters = atob(expense.fileData);
         const byteNumbers = new Array(byteCharacters.length);
@@ -144,466 +288,472 @@ export default function EmployeeExpenses() {
     }
   };
 
-  const handleExpenseClick = (expense) => {
-    setSelectedExpense(expense);
-    setDialogOpen(true);
+  const handleNewExpense = () => {
+    // Navigation to new expense page
+    router.push("/employee/travel-expense/upload");
   };
 
-  const handleCloseDialog = () => {
-    setDialogOpen(false);
-    setSelectedExpense(null);
-  };
-
-  const calculateTotals = () => {
-    return expenses.reduce(
-      (acc, expense) => {
-        acc.total += parseFloat(expense.amount) || 0;
-        if (expense.status === "approved")
-          acc.approved += parseFloat(expense.amount) || 0;
-        if (expense.status === "pending")
-          acc.pending += parseFloat(expense.amount) || 0;
-        if (expense.status === "rejected")
-          acc.rejected += parseFloat(expense.amount) || 0;
-        return acc;
-      },
-      { total: 0, approved: 0, pending: 0, rejected: 0 }
+  const isFormValid = () => {
+    return (
+      editFormData.expenseType &&
+      editFormData.amount &&
+      parseFloat(editFormData.amount) > 0 &&
+      editFormData.description &&
+      editFormData.travelStartDate &&
+      editFormData.travelEndDate &&
+      new Date(editFormData.travelStartDate) <=
+        new Date(editFormData.travelEndDate)
     );
   };
 
+  // Show loading spinner
+  if (loading) {
+    return (
+      <Box
+        sx={{
+          minHeight: "100vh",
+          backgroundColor: "#fafbfc",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <CircularProgress size={40} />
+      </Box>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <Box sx={{ minHeight: "100vh", backgroundColor: "#fafbfc", p: 2 }}>
+        <Alert severity="error" sx={{ maxWidth: 600, mx: "auto", mt: 4 }}>
+          {error}
+          <Button onClick={fetchExpenses} sx={{ ml: 2 }}>
+            Retry
+          </Button>
+        </Alert>
+      </Box>
+    );
+  }
+
   const totals = calculateTotals();
 
+  const handleHome = () => {
+    router.push("/main");
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    router.push("/login");
+  };
+
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        backgroundColor: "white",
-        py: 2,
-        px: 1,
-      }}
-    >
-      {/* Header Section */}
-      <Box sx={{ display: "flex", mb: 2 }}>
-        {/* Navigation Icon */}
-        <Box>
-          <Tooltip title="Home">
-            <IconButton
-              onClick={() => router.push("/main")}
-              sx={{
-                ml: 4,
-                mr: -4,
-                fontSize: 3,
-                color: "primary.main",
-                "&:hover": {
-                  bgcolor: "primary.main",
-                  color: "white",
-                  transform: "translateY(-1px)",
-                },
-                transition: "all 0.3s ease",
-              }}
-            >
-              <Home />
-            </IconButton>
-          </Tooltip>
-        </Box>
-        {/* Page Header */}
-        <Box sx={{ flex: 1, mb: 3, textAlign: "center" }}>
-          <Avatar
+    <Box sx={{ minHeight: "100vh", backgroundColor: "#fafbfc" }}>
+      {/* Header */}
+      <Box
+        sx={{
+          position: "sticky",
+          top: 0,
+          zIndex: 1000,
+          backdropFilter: "blur(20px)",
+          backgroundColor: "rgba(255, 255, 255, 0.85)",
+          borderBottom: "1px solid rgba(255, 255, 255, 0.18)",
+          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.1)",
+        }}
+      >
+        <Box sx={{ maxWidth: 1200, mx: "auto", px: 2, py: 2 }}>
+          <Box
             sx={{
-              width: 48,
-              height: 48,
-              mx: "auto",
-              mb: 1,
-              bgcolor: "primary.main",
-              fontSize: "1.5rem",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
             }}
           >
-            <Receipt />
-          </Avatar>
-          <Typography
-            variant="h5"
-            gutterBottom
-            sx={{
-              fontWeight: 600,
-              color: "text.primary",
-              mb: 0.5,
-            }}
-          >
-            My Travel Expenses
-          </Typography>
+            <Box sx={{ display: "flex", alignItems: "center" }}>
+              <Avatar
+                sx={{ width: 40, height: 40, mr: 2, bgcolor: "primary.main" }}
+              >
+                <Receipt />
+              </Avatar>
+              <Box>
+                <Typography
+                  variant="h5"
+                  sx={{ fontWeight: 700, color: "text.primary" }}
+                >
+                  My Expenses
+                </Typography>
+                <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                  Track your expense submissions
+                </Typography>
+              </Box>
+            </Box>
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <IconButton sx={{ color: "primary.light" }} onClick={handleHome}>
+                <Home />
+              </IconButton>
+              <IconButton sx={{ color: "error.main" }} onClick={handleLogout}>
+                <Logout />
+              </IconButton>
+              <Button
+                variant="contained"
+                startIcon={<Add />}
+                onClick={handleNewExpense}
+                sx={{ borderRadius: "8px", fontWeight: 600 }}
+              >
+                New Expense
+              </Button>
+            </Box>
+          </Box>
         </Box>
       </Box>
-      <Box sx={{ maxWidth: 1200, mx: "auto" }}>
+
+      <Box sx={{ maxWidth: 1200, mx: "auto", px: 2, pb: 3 }}>
         {/* Summary Cards */}
-        <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid item xs={6} sm={3}>
-            <Card
-              elevation={2}
-              sx={{
-                borderRadius: 2,
-                border: "1px solid rgba(25, 118, 210, 0.1)",
-              }}
-            >
-              <CardContent sx={{ p: 2, textAlign: "center" }}>
-                <TrendingUp
-                  sx={{ fontSize: 24, color: "primary.main", mb: 1 }}
-                />
-                <Typography variant="h6" fontWeight={600}>
-                  ₹{totals.total.toLocaleString()}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Total Amount
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Card
-              elevation={2}
-              sx={{
-                borderRadius: 2,
-                border: "1px solid rgba(76, 175, 80, 0.1)",
-              }}
-            >
-              <CardContent sx={{ p: 2, textAlign: "center" }}>
-                <CheckCircle
-                  sx={{ fontSize: 24, color: "success.main", mb: 1 }}
-                />
-                <Typography variant="h6" fontWeight={600}>
-                  ₹{totals.approved.toLocaleString()}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Approved
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Card
-              elevation={2}
-              sx={{
-                borderRadius: 2,
-                border: "1px solid rgba(255, 152, 0, 0.1)",
-              }}
-            >
-              <CardContent sx={{ p: 2, textAlign: "center" }}>
-                <Schedule sx={{ fontSize: 24, color: "warning.main", mb: 1 }} />
-                <Typography variant="h6" fontWeight={600}>
-                  ₹{totals.pending.toLocaleString()}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Pending
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Card
-              elevation={2}
-              sx={{
-                borderRadius: 2,
-                border: "1px solid rgba(244, 67, 54, 0.1)",
-              }}
-            >
-              <CardContent sx={{ p: 2, textAlign: "center" }}>
-                <Cancel sx={{ fontSize: 24, color: "error.main", mb: 1 }} />
-                <Typography variant="h6" fontWeight={600}>
-                  ₹{totals.rejected.toLocaleString()}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Rejected
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-
-        {/* Action Button */}
-        <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 3 }}>
-          <Button
-            variant="contained"
-            size="large"
-            onClick={() => router.push("/employee/travel-expense/upload")}
-            sx={{
-              borderRadius: 2,
-              px: 3,
-              py: 1,
-              fontWeight: 600,
-              "&:hover": {
-                transform: "translateY(-1px)",
-                boxShadow: "0 4px 15px rgba(25, 118, 210, 0.3)",
-              },
-              transition: "all 0.3s ease",
-            }}
-            startIcon={<Add />}
-          >
-            Submit New Expense
-          </Button>
-        </Box>
-
-        {/* Tabs and Content */}
-        <Card
-          elevation={4}
-          sx={{
-            borderRadius: 3,
-            overflow: "hidden",
-            backgroundColor: "white",
-          }}
-        >
-          {error && (
-            <Fade in>
-              <Alert
-                severity="error"
+        <Grid container spacing={2} sx={{ mt: 2, mb: 3 }}>
+          {[
+            {
+              label: "Total",
+              value: totals.total,
+              icon: TrendingUp,
+              color: "#0969da",
+              bgcolor: "linear-gradient(135deg, #f4f9ffff 0%, #deeef9ff 100%)",
+            },
+            {
+              label: "Approved",
+              value: totals.approved,
+              icon: CheckCircle,
+              color: "#1a7f37",
+              bgcolor: "linear-gradient(135deg, #f3fdf5ff 0%, #daf5e0ff 100%)",
+            },
+            {
+              label: "Pending",
+              value: totals.pending,
+              icon: Schedule,
+              color: "#bf8700",
+              bgcolor: "linear-gradient(135deg, #fcfaf1ff 0%, #faf1d4ff 100%)",
+            },
+            {
+              label: "Rejected",
+              value: totals.rejected,
+              icon: Cancel,
+              color: "#cf222e",
+              bgcolor: "linear-gradient(135deg, #faf8f9ff 0%, #f6dce4ff 100%)",
+            },
+          ].map((stat, index) => (
+            <Grid item xs={6} sm={3} key={index}>
+              <Card
+                elevation={1}
                 sx={{
-                  m: 3,
-                  mb: 0,
-                  borderRadius: 2,
-                  fontSize: "1rem",
+                  borderRadius: "8px",
+                  // border: `1px solid ${stat.color}`,
+                  background: stat.bgcolor,
                 }}
               >
-                {error}
-              </Alert>
-            </Fade>
-          )}
-
-          <Tabs
-            value={activeTab}
-            onChange={(e, newValue) => setActiveTab(newValue)}
-            sx={{
-              borderBottom: 1,
-              borderColor: "divider",
-              px: 2,
-              "& .MuiTab-root": {
-                minHeight: 60,
-                fontWeight: 600,
-              },
-            }}
-            variant="scrollable"
-            scrollButtons="auto"
-          >
-            {statusTabs.map((tab) => (
-              <Tab
-                key={tab.value}
-                label={tab.label}
-                value={tab.value}
-                icon={tab.icon}
-                iconPosition="start"
-              />
-            ))}
-          </Tabs>
-
-          <CardContent sx={{ p: 2 }}>
-            {loading ? (
-              <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-                <CircularProgress size={40} />
-              </Box>
-            ) : expenses.length === 0 ? (
-              <Box sx={{ textAlign: "center", py: 8 }}>
-                <Receipt sx={{ fontSize: 64, color: "grey.300", mb: 2 }} />
-                <Typography variant="h6" color="text.secondary" gutterBottom>
-                  No expenses found
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Start by submitting your first expense
-                </Typography>
-              </Box>
-            ) : (
-              <Grid container spacing={2}>
-                {expenses.map((expense) => (
-                  <Grid item xs={12} key={expense._id}>
-                    <Card
-                      elevation={1}
+                <CardContent sx={{ p: 2.5, textAlign: "center" }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      mb: 1,
+                    }}
+                  >
+                    <stat.icon
+                      sx={{ fontSize: 20, color: stat.color, mr: 1 }}
+                    />
+                    <Typography
+                      variant="body2"
                       sx={{
-                        borderRadius: 2,
-                        border: "1px solid rgba(0, 0, 0, 0.08)",
-                        cursor: "pointer",
-                        transition: "all 0.3s ease",
-                        "&:hover": {
-                          transform: "translateY(-2px)",
-                          boxShadow: "0 4px 20px rgba(0, 0, 0, 0.1)",
-                          borderColor: "primary.main",
-                        },
+                        fontWeight: 600,
+                        color: stat.color,
+                        fontSize: "0.75rem",
                       }}
-                      onClick={() => handleExpenseClick(expense)}
                     >
-                      <CardContent sx={{ p: 2 }}>
-                        <Box
-                          sx={{ display: "flex", alignItems: "center", mb: 2 }}
+                      {stat.label}
+                    </Typography>
+                  </Box>
+                  <Typography
+                    variant="h5"
+                    sx={{ fontWeight: 700, color: stat.color }}
+                  >
+                    ₹{stat.value.toLocaleString()}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+
+        {/* No data state */}
+        {bulkSubmissions.length === 0 ? (
+          <Card
+            elevation={0}
+            sx={{
+              borderRadius: "8px",
+              border: "1px solid #e1e4e8",
+              textAlign: "center",
+              py: 6,
+            }}
+          >
+            <CardContent>
+              <Receipt sx={{ fontSize: 48, color: "text.secondary", mb: 2 }} />
+              <Typography variant="h6" color="text.secondary" gutterBottom>
+                No expenses found
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                Get started by creating your first expense submission
+              </Typography>
+              <Button
+                variant="contained"
+                startIcon={<Add />}
+                onClick={handleNewExpense}
+                sx={{ borderRadius: "8px", fontWeight: 600 }}
+              >
+                Create First Expense
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          /* Expense Submissions */
+          <Grid container spacing={2}>
+            {bulkSubmissions.map((submission) => {
+              const submissionStatus = getSubmissionStatus(submission.expenses);
+              const statusCounts = getStatusCounts(submission.expenses);
+              const isExpanded = expandedSubmission === submission._id;
+
+              return (
+                <Grid item xs={12} key={submission._id}>
+                  <Card
+                    elevation={0}
+                    sx={{
+                      borderRadius: "8px",
+                      border: "1px solid #e1e4e8",
+                      "&:hover": { boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)" },
+                    }}
+                  >
+                    {/* Main Card Header */}
+                    <CardContent
+                      sx={{ p: 2, cursor: "pointer" }}
+                      onClick={() => toggleExpanded(submission._id)}
+                    >
+                      <Box sx={{ display: "flex", alignItems: "center" }}>
+                        <Avatar
+                          sx={{
+                            width: 32,
+                            height: 32,
+                            bgcolor: `${getStatusColor(submissionStatus)}.main`,
+                            mr: 2,
+                          }}
                         >
-                          <Avatar
-                            sx={{
-                              width: 32,
-                              height: 32,
-                              bgcolor: `${getStatusColor(expense.status)}.main`,
-                              mr: 2,
-                            }}
-                          >
-                            {getStatusIcon(expense.status)}
-                          </Avatar>
-                          <Box sx={{ flexGrow: 1 }}>
-                            <Typography variant="h6" fontWeight={600}>
-                              ₹
-                              {parseFloat(expense.amount || 0).toLocaleString()}
-                            </Typography>
-                          </Box>
-                          <Box sx={{ textAlign: "right" }}>
-                            <Chip
-                              label={expense.status.toUpperCase()}
-                              color={getStatusColor(expense.status)}
-                              size="small"
-                              sx={{ mb: 1 }}
-                            />
-                            <Box>
-                              {expense.fileName && (
-                                <Tooltip title="View Receipt">
-                                  <IconButton
-                                    size="small"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      viewDocument(expense._id);
-                                    }}
-                                    sx={{
-                                      color: "primary.main",
-                                      "&:hover": { bgcolor: "primary.light" },
-                                    }}
-                                  >
-                                    <Visibility fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                              )}
-                            </Box>
-                          </Box>
+                          {getStatusIcon(submissionStatus)}
+                        </Avatar>
+
+                        <Box sx={{ flexGrow: 1 }}>
+                          <Typography variant="h6" fontWeight={600}>
+                            ₹{submission.totalAmount?.toLocaleString()}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {submission.expenses.length} expenses •{" "}
+                            {new Date(
+                              submission.submittedAt
+                            ).toLocaleDateString()}
+                          </Typography>
                         </Box>
 
-                        <Grid container spacing={2}>
-                          <Grid item xs={12} sm={2}>
-                            <Box
-                              sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                mb: 1,
-                              }}
-                            >
-                              <CalendarToday
-                                sx={{
-                                  fontSize: 16,
-                                  color: "text.secondary",
-                                  mr: 1,
-                                }}
-                              />
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                              >
-                                Start:{" "}
-                                {expense.travelStartDate
-                                  ? new Date(
-                                      expense.travelStartDate
-                                    ).toLocaleDateString()
-                                  : "Not available"}
-                              </Typography>
-                            </Box>
-                          </Grid>
-                          <Grid item xs={12} sm={4}>
-                            <Box
-                              sx={{
-                                display: "flex",
-                                alignItems: "flex-start",
-                                mb: 1,
-                              }}
-                            >
-                              <CalendarToday
-                                sx={{
-                                  fontSize: 16,
-                                  color: "text.secondary",
-                                  mr: 1,
-                                }}
-                              />
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                              >
-                                End:{" "}
-                                {expense.travelEndDate
-                                  ? new Date(
-                                      expense.travelEndDate
-                                    ).toLocaleDateString()
-                                  : "Not available"}
-                              </Typography>
-                            </Box>
-                          </Grid>
-                          <Grid item xs={12}>
-                            <Box
-                              sx={{ display: "flex", alignItems: "flex-start" }}
-                            >
-                              <Description
-                                sx={{
-                                  fontSize: 16,
-                                  color: "text.secondary",
-                                  mr: 1,
-                                  mt: 0.2,
-                                }}
-                              />
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                                sx={{
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  display: "-webkit-box",
-                                  WebkitLineClamp: 2,
-                                  WebkitBoxOrient: "vertical",
-                                }}
-                              >
-                                {expense.description}
-                              </Typography>
-                            </Box>
-                          </Grid>
-                        </Grid>
+                        <Box sx={{ display: "flex", gap: 1, mr: 2 }}>
+                          {statusCounts.approved && (
+                            <Chip
+                              label={`${statusCounts.approved} Approved`}
+                              color="success"
+                              size="small"
+                              variant="outlined"
+                            />
+                          )}
+                          {statusCounts.pending && (
+                            <Chip
+                              label={`${statusCounts.pending} Pending`}
+                              color="warning"
+                              size="small"
+                              variant="outlined"
+                            />
+                          )}
+                          {statusCounts.rejected && (
+                            <Chip
+                              label={`${statusCounts.rejected} Rejected`}
+                              color="error"
+                              size="small"
+                              variant="outlined"
+                            />
+                          )}
+                        </Box>
 
-                        {expense.comments && expense.status === "rejected" && (
-                          <Box
-                            sx={{
-                              mt: 2,
-                              p: 1.5,
-                              borderRadius: 1,
-                              border: "1px solid",
-                              borderColor: "error.main",
-                            }}
-                          >
-                            <Typography
-                              variant="caption"
-                              color="error.main"
-                              fontWeight={600}
-                            >
-                              Rejection Reason:
-                            </Typography>
-                            <Typography variant="body2">
-                              {expense.comments}
-                            </Typography>
-                          </Box>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-            )}
-          </CardContent>
-        </Card>
+                        <IconButton>
+                          {isExpanded ? <ExpandLess /> : <ExpandMore />}
+                        </IconButton>
+                      </Box>
+                    </CardContent>
 
-        {/* Expense Detail Dialog */}
+                    {/* Expanded Details */}
+                    <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                      <Box sx={{ borderTop: "1px solid #e1e4e8", p: 2 }}>
+                        <TableContainer
+                          component={Paper}
+                          elevation={0}
+                          sx={{ border: "1px solid #e1e4e8" }}
+                        >
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow sx={{ bgcolor: "grey.50" }}>
+                                <TableCell sx={{ fontWeight: 600 }}>
+                                  Type
+                                </TableCell>
+                                <TableCell sx={{ fontWeight: 600 }}>
+                                  Amount
+                                </TableCell>
+                                <TableCell sx={{ fontWeight: 600 }}>
+                                  Description
+                                </TableCell>
+                                <TableCell sx={{ fontWeight: 600 }}>
+                                  Period
+                                </TableCell>
+                                <TableCell sx={{ fontWeight: 600 }}>
+                                  Status
+                                </TableCell>
+                                <TableCell sx={{ fontWeight: 600 }}>
+                                  Actions
+                                </TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {submission.expenses.map((expense) => (
+                                <TableRow key={expense._id} hover>
+                                  <TableCell>
+                                    <Chip
+                                      label={expense.expenseType}
+                                      size="small"
+                                      variant="outlined"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Typography
+                                      variant="body2"
+                                      fontWeight={600}
+                                    >
+                                      ₹
+                                      {parseFloat(
+                                        expense.amount
+                                      ).toLocaleString()}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Typography
+                                      variant="body2"
+                                      noWrap
+                                      sx={{ maxWidth: 200 }}
+                                    >
+                                      {expense.description}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Typography
+                                      variant="caption"
+                                      display="block"
+                                    >
+                                      {new Date(
+                                        expense.travelStartDate
+                                      ).toLocaleDateString()}
+                                    </Typography>
+                                    <Typography
+                                      variant="caption"
+                                      display="block"
+                                    >
+                                      to{" "}
+                                      {new Date(
+                                        expense.travelEndDate
+                                      ).toLocaleDateString()}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Chip
+                                      label={expense.status.toUpperCase()}
+                                      color={getStatusColor(expense.status)}
+                                      size="small"
+                                    />
+                                    {expense.comments &&
+                                      expense.status === "rejected" && (
+                                        <Tooltip title={expense.comments}>
+                                          <Typography
+                                            variant="caption"
+                                            color="error"
+                                            display="block"
+                                            sx={{ mt: 0.5, cursor: "pointer" }}
+                                          >
+                                            View reason
+                                          </Typography>
+                                        </Tooltip>
+                                      )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Box sx={{ display: "flex", gap: 0.5 }}>
+                                      {expense.fileName && (
+                                        <Tooltip title="View Receipt">
+                                          <IconButton
+                                            size="small"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleViewDocument(expense._id);
+                                            }}
+                                            sx={{ color: "info.main" }}
+                                          >
+                                            <Receipt fontSize="small" />
+                                          </IconButton>
+                                        </Tooltip>
+                                      )}
+
+                                      {(expense.status === "pending" ||
+                                        expense.status === "rejected") && (
+                                        <Tooltip title="Edit Expense">
+                                          <IconButton
+                                            size="small"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleEditExpense(expense);
+                                            }}
+                                            sx={{ color: "warning.main" }}
+                                          >
+                                            <Edit fontSize="small" />
+                                          </IconButton>
+                                        </Tooltip>
+                                      )}
+                                    </Box>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Box>
+                    </Collapse>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </Grid>
+        )}
+
+        {/* Edit Expense Dialog */}
         <Dialog
-          open={dialogOpen}
-          onClose={handleCloseDialog}
-          maxWidth="sm"
+          open={editDialogOpen}
+          onClose={handleCloseEditDialog}
+          maxWidth="md"
           fullWidth
-          PaperProps={{
-            sx: { borderRadius: 3 },
-          }}
         >
           {selectedExpense && (
             <>
-              <DialogTitle sx={{ pb: 1 }}>
+              <DialogTitle>
                 <Box sx={{ display: "flex", alignItems: "center" }}>
                   <Avatar
                     sx={{
@@ -613,97 +763,211 @@ export default function EmployeeExpenses() {
                       mr: 2,
                     }}
                   >
-                    {getStatusIcon(selectedExpense.status)}
+                    <Edit />
                   </Avatar>
                   <Box>
-                    <Typography variant="h6" fontWeight={600}>
-                      Expense Details
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      ₹{parseFloat(selectedExpense.amount).toLocaleString()}
-                    </Typography>
+                    <Typography variant="h6">Edit Expense</Typography>
                   </Box>
                 </Box>
               </DialogTitle>
-              <DialogContent>
-                <Stack spacing={2}>
-                  <Paper
-                    elevation={0}
-                    sx={{ p: 2, bgcolor: "grey.50", borderRadius: 2 }}
-                  >
-                    <Typography variant="subtitle2" gutterBottom>
-                      Travel Period
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {selectedExpense.travelStartDate &&
-                      selectedExpense.travelEndDate
-                        ? `${new Date(
-                            selectedExpense.travelStartDate
-                          ).toLocaleDateString()} - ${new Date(
-                            selectedExpense.travelEndDate
-                          ).toLocaleDateString()}`
-                        : "Date range not available"}
-                    </Typography>
-                  </Paper>
 
-                  <Paper
-                    elevation={0}
-                    sx={{ p: 2, bgcolor: "grey.50", borderRadius: 2 }}
-                  >
-                    <Typography variant="subtitle2" gutterBottom>
-                      Description
-                    </Typography>
-                    <Typography variant="body2">
-                      {selectedExpense.description}
-                    </Typography>
-                  </Paper>
+              <DialogContent sx={{ pt: 2 }}>
+                <Grid container spacing={3}>
+                  {/* Expense Type */}
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Expense Type</InputLabel>
+                      <Select
+                        value={editFormData.expenseType}
+                        label="Expense Type"
+                        onChange={(e) =>
+                          handleFormChange("expenseType", e.target.value)
+                        }
+                      >
+                        <MenuItem value="travel">Travel</MenuItem>
+                        <MenuItem value="accommodation">Accommodation</MenuItem>
+                        <MenuItem value="meals">Meals</MenuItem>
+                        <MenuItem value="transport">Transport</MenuItem>
+                        <MenuItem value="office_supplies">
+                          Office Supplies
+                        </MenuItem>
+                        <MenuItem value="training">Training</MenuItem>
+                        <MenuItem value="other">Other</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
 
-                  <Paper
-                    elevation={0}
-                    sx={{ p: 2, bgcolor: "grey.50", borderRadius: 2 }}
-                  >
-                    <Typography variant="subtitle2" gutterBottom>
-                      Status
-                    </Typography>
-                    <Chip
-                      label={selectedExpense.status.toUpperCase()}
-                      color={getStatusColor(selectedExpense.status)}
-                      size="small"
+                  {/* Amount */}
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Amount (₹)"
+                      type="number"
+                      value={editFormData.amount}
+                      onChange={(e) =>
+                        handleFormChange("amount", e.target.value)
+                      }
+                      inputProps={{ min: 0, step: 0.01 }}
                     />
-                  </Paper>
+                  </Grid>
 
+                  {/* Description */}
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Description"
+                      multiline
+                      rows={3}
+                      value={editFormData.description}
+                      onChange={(e) =>
+                        handleFormChange("description", e.target.value)
+                      }
+                      placeholder="Enter expense description..."
+                    />
+                  </Grid>
+
+                  {/* Travel Dates */}
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Travel Start Date"
+                      type="date"
+                      value={editFormData.travelStartDate}
+                      onChange={(e) =>
+                        handleFormChange("travelStartDate", e.target.value)
+                      }
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Travel End Date"
+                      type="date"
+                      value={editFormData.travelEndDate}
+                      onChange={(e) =>
+                        handleFormChange("travelEndDate", e.target.value)
+                      }
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+
+                  {/* Current File Info */}
+                  {selectedExpense.fileName && (
+                    <Grid item xs={12}>
+                      <Box sx={{ p: 2, bgcolor: "grey.50", borderRadius: 1 }}>
+                        <Typography variant="subtitle2" gutterBottom>
+                          Current Receipt
+                        </Typography>
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
+                          <Receipt sx={{ color: "primary.main" }} />
+                          <Typography variant="body2">
+                            {selectedExpense.fileName}
+                          </Typography>
+                          <Button
+                            size="small"
+                            onClick={() =>
+                              handleViewDocument(selectedExpense._id)
+                            }
+                          >
+                            View
+                          </Button>
+                        </Box>
+                      </Box>
+                    </Grid>
+                  )}
+
+                  {/* File Upload */}
+                  <Grid item xs={12}>
+                    <Box
+                      sx={{
+                        p: 2,
+                        border: "2px dashed #e1e4e8",
+                        borderRadius: 1,
+                      }}
+                    >
+                      <Stack spacing={2} alignItems="center">
+                        <CloudUpload
+                          sx={{ fontSize: 48, color: "text.secondary" }}
+                        />
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          textAlign="center"
+                        >
+                          {selectedExpense.fileName
+                            ? "Upload new receipt (optional)"
+                            : "Upload receipt (optional)"}
+                        </Typography>
+                        <Button
+                          component="label"
+                          variant="outlined"
+                          startIcon={<CloudUpload />}
+                        >
+                          Choose File
+                          <input
+                            hidden
+                            accept="image/*,.pdf"
+                            type="file"
+                            onChange={handleFileChange}
+                          />
+                        </Button>
+                        {newFile && (
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 1,
+                            }}
+                          >
+                            <Typography variant="body2" color="success.main">
+                              New file: {newFile.name}
+                            </Typography>
+                            <IconButton
+                              size="small"
+                              onClick={() => setNewFile(null)}
+                            >
+                              <Delete fontSize="small" />
+                            </IconButton>
+                          </Box>
+                        )}
+                      </Stack>
+                    </Box>
+                  </Grid>
+
+                  {/* Comments for rejected expenses */}
                   {selectedExpense.comments &&
                     selectedExpense.status === "rejected" && (
-                      <Paper
-                        elevation={0}
-                        sx={{ p: 2, bgcolor: "error.light", borderRadius: 2 }}
-                      >
-                        <Typography
-                          variant="subtitle2"
-                          gutterBottom
-                          color="error.main"
-                        >
-                          Rejection Reason
-                        </Typography>
-                        <Typography variant="body2">
-                          {selectedExpense.comments}
-                        </Typography>
-                      </Paper>
+                      <Grid item xs={12}>
+                        <Alert severity="error">
+                          <Typography variant="subtitle2" gutterBottom>
+                            Rejection Reason:
+                          </Typography>
+                          <Typography variant="body2">
+                            {selectedExpense.comments}
+                          </Typography>
+                        </Alert>
+                      </Grid>
                     )}
-                </Stack>
+                </Grid>
               </DialogContent>
+
               <DialogActions sx={{ p: 3, pt: 1 }}>
-                {selectedExpense.fileName && (
-                  <Button
-                    variant="outlined"
-                    onClick={() => viewDocument(selectedExpense._id)}
-                    startIcon={<Visibility />}
-                  >
-                    View Receipt
-                  </Button>
-                )}
-                <Button onClick={handleCloseDialog} variant="contained">
-                  Close
+                <Button onClick={handleCloseEditDialog} disabled={editLoading}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveExpense}
+                  variant="contained"
+                  disabled={!isFormValid() || editLoading}
+                  startIcon={
+                    editLoading ? <CircularProgress size={16} /> : <Edit />
+                  }
+                >
+                  {editLoading ? "Saving..." : "Save Changes"}
                 </Button>
               </DialogActions>
             </>

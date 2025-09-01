@@ -1,6 +1,4 @@
-// =================================================================
-// 3. Updated server/server.js (Your existing file with expense routes)
-// =================================================================
+//server/server.js
 const express = require("express");
 const connect = require("./config/db");
 const userController = require("./controllers/user");
@@ -15,14 +13,25 @@ const expenseRoutes = require("./routes/travelExpense");
 
 const app = express();
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Increase payload size limits for bulk operations
+app.use(
+  express.json({
+    limit: "50mb", // Increase JSON payload limit
+  })
+);
+
+app.use(
+  express.urlencoded({
+    limit: "50mb", // Increase URL-encoded payload limit
+    extended: true,
+  })
+);
 
 // Updated CORS - add Authorization to allowed headers
 app.use(
   cors({
     origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"],
   })

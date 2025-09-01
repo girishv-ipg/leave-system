@@ -19,10 +19,4 @@ async function getDb() {
   return c.db(DB_NAME);
 }
 
-async function getBucket() {
-  const db = await getDb();
-  // bucket name = 'travel-expenses.files' / '.chunks'
-  return new GridFSBucket(db, { bucketName: "travel-expenses" });
-}
-
-module.exports = { getDb, getBucket };
+module.exports = { getDb };
