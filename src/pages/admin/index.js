@@ -45,6 +45,9 @@ export default function AdminLayout({ children }) {
             Hi, {name}
           </Typography>
 
+          <Button color="inherit" component={Link} href="/main">
+            Home
+          </Button>
           <Button color="inherit" component={Link} href="/admin/requests">
             Leave Requests
           </Button>

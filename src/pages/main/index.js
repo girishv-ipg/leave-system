@@ -1,7 +1,8 @@
 "use client";
 
-import { Box, Grid, Paper, Typography } from "@mui/material";
+import { Box, Grid, IconButton, Paper, Typography } from "@mui/material";
 
+import { Logout } from "@mui/icons-material";
 import React from "react";
 import { useRouter } from "next/navigation";
 
@@ -41,53 +42,88 @@ const Main = () => {
       onClick: handleTravelExpenseClick,
     },
   ];
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    router.push("/login");
+  };
 
   return (
-    <Box
-      sx={{
-        height: "100vh",
-        width: "100vw",
-        backgroundImage: 'url("/ipg2.png")',
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        px: 2,
-      }}
-    >
-      <Grid container spacing={4} sx={{ maxWidth: 1200 }}>
-        {cards.map(({ title, onClick }, idx) => (
-          <Grid item xs={12} md={6} key={idx}>
-            <Paper
-              elevation={5}
-              onClick={onClick}
-              sx={{
-                p: 6,
-                height: "100%",
-                minHeight: 240,
-                borderRadius: 4,
-                background: "linear-gradient(to right, #ffffffcc, #e3f2fdcc)",
-                boxShadow: "0 8px 20px rgba(0, 0, 0, 0.15)",
-                transition: "transform 0.3s ease, box-shadow 0.3s ease",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                "&:hover": {
-                  transform: "translateY(-4px)",
-                  boxShadow: "0 12px 24px rgba(0, 0, 0, 0.2)",
-                },
-              }}
-            >
-              <Typography variant="h5" fontWeight={600} color="primary">
-                {title}
-              </Typography>
-            </Paper>
-          </Grid>
-        ))}
-      </Grid>
+    <Box sx={{ maxHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <Box
+        sx={{
+          width: "100%",
+          top: 0,
+          bgcolor: "background.paper",
+          zIndex: 10,
+        }}
+      >
+        <Paper
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            width: "100%",
+            p: 2,
+            gap: 1,
+            justifyContent: "space-between",
+          }}
+        >
+          <Box sx={{ pr: 2 }}>
+            <img src="/ipg2.png" alt="Logo" height={40} />
+          </Box>
+          <IconButton
+            sx={{ color: "error.main", height: 40, width: 40 }}
+            onClick={handleLogout}
+          >
+            <Logout />
+          </IconButton>
+        </Paper>
+      </Box>
+      <Box
+        sx={{
+          width: "100%",
+          height: "100vh",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          px: 2,
+        }}
+      >
+        <Grid container spacing={4} sx={{ maxWidth: 1200 }}>
+          {cards.map(({ title, onClick }, idx) => (
+            <Grid item xs={12} md={6} key={idx}>
+              <Paper
+                elevation={5}
+                onClick={onClick}
+                sx={{
+                  p: 6,
+                  height: "100%",
+                  minHeight: 240,
+                  borderRadius: 4,
+                  background: "linear-gradient(to right, #e3f0f8cc, #e3f2fdcc)",
+                  boxShadow: "0 8px 20px rgba(0, 0, 0, 0.15)",
+                  transition: "transform 0.3s ease, box-shadow 0.3s ease",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  "&:hover": {
+                    transform: "translateY(-4px)",
+                    boxShadow: "0 12px 24px rgba(0, 0, 0, 0.2)",
+                  },
+                }}
+              >
+                <Typography variant="h5" fontWeight={600} color="primary">
+                  {title}
+                </Typography>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+      </Box>
     </Box>
   );
 };

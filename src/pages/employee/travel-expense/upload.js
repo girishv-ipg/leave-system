@@ -181,12 +181,7 @@ export default function BulkExpenseEntry() {
 
   const validateExpenses = () => {
     for (let expense of expenses) {
-      if (
-        !expense.expenseType ||
-        !expense.amount ||
-        !expense.description ||
-        !expense.file
-      ) {
+      if (!expense.expenseType || !expense.amount || !expense.description) {
         return false;
       }
       if (new Date(expense.travelStartDate) > new Date(expense.travelEndDate)) {
@@ -360,7 +355,7 @@ export default function BulkExpenseEntry() {
 
       // Make API call to submit bulk expenses using FormData
       const response = await axios.post(
-        "http://IPGNB10348:4000/expenses/bulk-submit",
+        "http://ipgwk10021:4000/expenses/bulk-submit",
         formData,
         {
           headers: {
@@ -615,55 +610,6 @@ export default function BulkExpenseEntry() {
               </Alert>
             </Fade>
           )}
-
-          {/* Employee Info */}
-          {/* <Paper
-          elevation={2}
-          sx={{
-            p: 2,
-            mb: 3,
-            backgroundColor: "gray.50",
-            borderRadius: 3,
-            boxShadow: 3,
-          }}
-        >
-          <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-            <Person sx={{ mr: 1, fontSize: 24 }} />
-            <Typography variant="h6" fontWeight={600}>
-              Employee Information
-            </Typography>
-            {isEditMode && (
-              <Chip
-                label="EDIT MODE"
-                size="small"
-                sx={{
-                  ml: 2,
-                  bgcolor: "rgba(255,255,255,0.2)",
-                  color: "white",
-                  fontWeight: 600,
-                }}
-              />
-            )}
-          </Box>
-          <Grid container spacing={3}>
-            <Grid item xs={12} sm={6}>
-              <Typography variant="body2" sx={{ opacity: 0.8, mb: 0.5 }}>
-                Employee Name
-              </Typography>
-              <Typography variant="h6" fontWeight={500}>
-                {userInfo.name}
-              </Typography>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Typography variant="body2" sx={{ opacity: 0.8, mb: 0.5 }}>
-                Employee ID
-              </Typography>
-              <Typography variant="h6" fontWeight={500}>
-                {userInfo.empId}
-              </Typography>
-            </Grid>
-          </Grid>
-        </Paper> */}
 
           {/* Expenses Table */}
           <Card

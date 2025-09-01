@@ -753,7 +753,7 @@ export default function ExpenseIndex() {
         >
           {selectedExpense && (
             <>
-              <DialogTitle>
+              <DialogTitle sx={{ borderBottom: "1px solid #e1e4e8" }}>
                 <Box sx={{ display: "flex", alignItems: "center" }}>
                   <Avatar
                     sx={{
@@ -772,7 +772,7 @@ export default function ExpenseIndex() {
               </DialogTitle>
 
               <DialogContent sx={{ pt: 2 }}>
-                <Grid container spacing={3}>
+                <Grid container spacing={2} sx={{ mt: 0.5 }}>
                   {/* Expense Type */}
                   <Grid item xs={12} sm={6}>
                     <FormControl fullWidth>
@@ -891,7 +891,7 @@ export default function ExpenseIndex() {
                     >
                       <Stack spacing={2} alignItems="center">
                         <CloudUpload
-                          sx={{ fontSize: 48, color: "text.secondary" }}
+                          sx={{ fontSize: 40, color: "text.secondary" }}
                         />
                         <Typography
                           variant="body2"

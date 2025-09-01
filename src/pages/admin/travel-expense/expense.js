@@ -128,12 +128,13 @@ export default function AdminExpenses() {
   }, [activeTab]);
 
   const handleLogout = () => {
+    localStorage.removeItem("user");
     localStorage.removeItem("token");
     router.push("/login");
   };
 
   const handleHome = () => {
-    router.push("/admin/dashboard");
+    router.push("/main");
   };
 
   const handleAction = async () => {
@@ -797,7 +798,7 @@ export default function AdminExpenses() {
                                           {(expense.isResubmitted ||
                                             expense.isEdited) && (
                                             <Box sx={{ mt: 1 }}>
-                                              {expense.isEdited && (
+                                              {expense.isResubmitted && (
                                                 <Chip
                                                   label="Resubmitted"
                                                   size="small"
@@ -959,25 +960,6 @@ export default function AdminExpenses() {
                                         {submission.resubmissionCount}
                                       </Typography>
                                     )}
-                                  </Box>
-                                )}
-
-                                {submission.expenses.some(
-                                  (exp) =>
-                                    exp.editHistory &&
-                                    exp.editHistory.length > 0
-                                ) && (
-                                  <Box
-                                    sx={{ pl: 2 }}
-                                    fontWeight={600}
-                                    color="info.dark"
-                                  >
-                                    <Typography variant="caption">
-                                      Some expenses in this submission have been
-                                      modified after initial submission. Please
-                                      review before proceeding.
-                                    </Typography>
-                                    <Typography variant="caption"></Typography>
                                   </Box>
                                 )}
                               </Box>
