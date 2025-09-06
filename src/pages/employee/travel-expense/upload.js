@@ -354,8 +354,8 @@ export default function BulkExpenseEntry() {
       console.log("Has file_0 key:", formData.has("file_0"));
 
       // Make API call to submit bulk expenses using FormData
-      const response = await axios.post(
-        "http://ipgwk10021:4000/expenses/bulk-submit",
+      const response = await axiosInstance.post(
+        "/expenses/bulk-submit",
         formData,
         {
           headers: {
@@ -665,7 +665,6 @@ export default function BulkExpenseEntry() {
                           fontWeight: 600,
                           bgcolor: isEditMode ? "warning.main" : "primary.main",
                           color: "white",
-                          minWidth: 200,
                         }}
                       >
                         <Box
@@ -769,10 +768,10 @@ export default function BulkExpenseEntry() {
                         <TableCell>
                           <TextField
                             type="number"
-                            value={expense.amount}
+                            value={expense?.amount}
                             onChange={(e) =>
                               updateExpense(
-                                expense.id,
+                                expense?.id,
                                 "amount",
                                 e.target.value
                               )
