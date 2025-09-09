@@ -146,6 +146,14 @@ export default function EmployeeLayout({ children }) {
             Hi {name}, Welcome
           </Typography>
 
+           <Button
+            color="inherit"
+            component={Link}
+            href="/main"
+          >
+            Home
+          </Button>
+
           <Button
             color="inherit"
             component={Link}

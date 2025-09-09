@@ -23,10 +23,39 @@ const Main = () => {
       }
     }
 
-    if (userRole === "admin") {
+    if (
+      userRole === "admin" ||
+      userRole === "manager" ||
+      userRole === "finance"
+    ) {
       router.push("/admin/travel-expense/expense");
     } else {
       router.push("/employee/travel-expense");
+    }
+  };
+
+   const handleLeaveManagementClick = () => {
+    // Get user data from localStorage
+    const userData = localStorage.getItem("user");
+    let userRole = "employee"; // default
+
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        userRole = user.role || "employee";
+      } catch (e) {
+        console.error("Error parsing user data:", e);
+      }
+    }
+
+    if (
+      userRole === "admin" ||
+      userRole === "manager" ||
+      userRole === "hr"
+    ) {
+      router.push("/admin/requests");
+    } else {
+      router.push("/employee/requestLeave");
     }
   };
 
@@ -34,7 +63,7 @@ const Main = () => {
     {
       title: "Leave Management",
       route: "/admin/requests",
-      onClick: () => router.push("/admin/requests"),
+      onClick: handleLeaveManagementClick,
     },
     {
       title: "Travel Expense Management",

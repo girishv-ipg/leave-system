@@ -3,7 +3,6 @@ const multer = require("multer");
 const { ObjectId } = require("mongodb");
 const authenticate = require("../middleware/authenticate"); // reuse existing
 const expenseController = require("../controllers/travelExpense");
-
 const router = express.Router();
 
 // Simple multer setup - store in memory, convert to base64
@@ -78,6 +77,13 @@ router.put(
   expenseController.updateExpense
 );
 
+// Manager review routes
+router.patch('/expenses/:id/manager-review', authenticate, expenseController.managerReviewExpense);
+router.patch('/bulk-submissions/:id/manager-review', authenticate, expenseController.managerBulkReview);
+
+// Finance review routes
+router.patch('/expenses/:id/finance-review', authenticate, expenseController.financeReviewExpense);
+router.patch('/bulk-submissions/:id/finance-review', authenticate, expenseController.financeBulkReview);
 
 
 module.exports = router;

@@ -27,9 +27,9 @@ const LoginPage = () => {
     const user = JSON.parse(localStorage.getItem("user"));
 
     if (["admin", "manager", "hr"].includes(user?.role)) {
-      router.replace("/main");
+      router.replace("/admin/requests");
     } else if (user?.role === "employee") {
-      router.replace("/main");
+      router.replace("/employee/requestLeave");
     }
   }, [router]);
 

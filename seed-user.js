@@ -27,7 +27,7 @@ const MONGO_URI =
         department: { type: String, required: false },
         role: {
           type: String,
-          enum: ["admin", "employee", "manager", "hr"],
+          enum: ["admin", "employee", "manager", "hr", "finance"],
           default: "employee",
         },
         designation: { type: String, required: true, trim: true },

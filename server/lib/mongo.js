@@ -1,5 +1,5 @@
 // server/lib/mongo.js
-const { MongoClient, GridFSBucket } = require("mongodb");
+const { MongoClient } = require("mongodb");
 
 const uri = process.env.MONGO_URL; // same as docker-compose backend env
 const DB_NAME = process.env.DB_NAME || "leaveSystem";

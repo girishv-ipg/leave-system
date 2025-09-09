@@ -2,6 +2,7 @@
 "use client";
 
 import {
+  AccountBalance,
   AdminPanelSettings,
   Assessment,
   AttachMoney,
@@ -19,9 +20,11 @@ import {
   Person,
   Receipt,
   Schedule,
+  SupervisorAccount,
   ThumbDown,
   ThumbUp,
   TrendingUp,
+  VerifiedUser,
   Visibility,
 } from "@mui/icons-material";
 import {
@@ -73,9 +76,18 @@ export default function AdminExpenses() {
   const [actionDialog, setActionDialog] = useState({
     open: false,
     expense: null,
+    submission: null,
     action: "",
+    type: "individual", // individual or bulk
   });
   const [comments, setComments] = useState("");
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // Get current user info
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem("user"));
+    setCurrentUser(user);
+  }, []);
 
   const statusTabs = [
     { value: "all", label: "All", icon: <Assessment />, color: "primary" },
@@ -86,8 +98,14 @@ export default function AdminExpenses() {
       color: "warning",
     },
     {
+      value: "manager_approved",
+      label: "Manager Approved",
+      icon: <SupervisorAccount />,
+      color: "info",
+    },
+    {
       value: "approved",
-      label: "Approved",
+      label: "Fully Approved",
       icon: <CheckCircle />,
       color: "success",
     },
@@ -104,15 +122,11 @@ export default function AdminExpenses() {
         return;
       }
 
-      // Modified API call to get bulk submissions
       const response = await axiosInstance.get("/admin/expenses", {
         headers: { Authorization: `Bearer ${token}` },
         params: { status },
       });
-      console.log(
-        "Bulk submissions response => ",
-        response.data.bulkSubmissions
-      );
+
       setBulkSubmissions(response.data.bulkSubmissions || []);
       setStats(response.data.stats);
     } catch (error) {
@@ -137,20 +151,66 @@ export default function AdminExpenses() {
     router.push("/main");
   };
 
-  const handleAction = async () => {
+  // Handle individual expense action
+  const handleIndividualAction = async () => {
     try {
       const token = localStorage.getItem("token");
+      const endpoint =
+        currentUser?.role === "manager"
+          ? `/expenses/${actionDialog.expense._id}/manager-review`
+          : `/expenses/${actionDialog.expense._id}/finance-review`;
+
       await axiosInstance.patch(
-        `/expenses/${actionDialog.expense._id}/status`,
+        endpoint,
         {
-          status: actionDialog.action,
+          action: actionDialog.action,
           comments: comments,
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       setSuccess(`Expense ${actionDialog.action} successfully!`);
-      setActionDialog({ open: false, expense: null, action: "" });
+      setActionDialog({
+        open: false,
+        expense: null,
+        submission: null,
+        action: "",
+        type: "individual",
+      });
+      setComments("");
+      fetchExpenses(activeTab);
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (error) {
+      setError(error.response?.data?.error || error.message);
+    }
+  };
+
+  // Handle bulk submission action
+  const handleBulkAction = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const endpoint =
+        currentUser?.role === "manager"
+          ? `/bulk-submissions/${actionDialog.submission._id}/manager-review`
+          : `/bulk-submissions/${actionDialog.submission._id}/finance-review`;
+
+      await axiosInstance.patch(
+        endpoint,
+        {
+          action: actionDialog.action,
+          comments: comments,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setSuccess(`Submission ${actionDialog.action} successfully!`);
+      setActionDialog({
+        open: false,
+        expense: null,
+        submission: null,
+        action: "",
+        type: "bulk",
+      });
       setComments("");
       fetchExpenses(activeTab);
       setTimeout(() => setSuccess(""), 3000);
@@ -194,8 +254,25 @@ export default function AdminExpenses() {
         return "error";
       case "pending":
         return "warning";
+      case "manager_approved":
+        return "info";
       default:
         return "default";
+    }
+  };
+
+  const getStatusGradient = (status) => {
+    switch (status) {
+      case "approved":
+        return "linear-gradient(135deg, #10b981 0%, #059669 100%)";
+      case "rejected":
+        return "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)";
+      case "pending":
+        return "linear-gradient(135deg, #f97316 0%, #ea580c 100%)";
+      case "manager_approved":
+        return "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)";
+      default:
+        return "linear-gradient(135deg, #6b7280 0%, #4b5563 100%)";
     }
   };
 
@@ -207,6 +284,8 @@ export default function AdminExpenses() {
         return <Cancel />;
       case "pending":
         return <Schedule />;
+      case "manager_approved":
+        return <SupervisorAccount />;
       default:
         return <Assessment />;
     }
@@ -216,9 +295,10 @@ export default function AdminExpenses() {
     const statuses = expenses.map((exp) => exp.status);
     if (statuses.every((status) => status === "approved")) return "approved";
     if (statuses.some((status) => status === "rejected")) return "rejected";
+    if (statuses.some((status) => status === "manager_approved"))
+      return "manager_approved";
     return "pending";
   };
-
   const getStatusCounts = (expenses) => {
     return expenses.reduce((acc, exp) => {
       acc[exp.status] = (acc[exp.status] || 0) + 1;
@@ -245,10 +325,41 @@ export default function AdminExpenses() {
           acc.pending += parseFloat(expense.amount) || 0;
         if (expense.status === "rejected")
           acc.rejected += parseFloat(expense.amount) || 0;
+        if (expense.status === "manager_approved")
+          acc.manager_approved += parseFloat(expense.amount) || 0;
         return acc;
       },
-      { total: 0, approved: 0, pending: 0, rejected: 0 }
+      { total: 0, approved: 0, pending: 0, rejected: 0, manager_approved: 0 }
     );
+  };
+
+  // Check if user can perform bulk actions on a submission
+  const canPerformBulkAction = (submission) => {
+    if (currentUser?.role === "manager") {
+      // Manager can approve/reject submissions where all expenses are pending
+      return submission.expenses.every((exp) => exp.status === "pending");
+    } else if (currentUser?.role === "finance") {
+      // Finance can approve/reject submissions where all expenses are manager_approved
+      return submission.expenses.every(
+        (exp) => exp.status === "manager_approved"
+      );
+    }
+    return false;
+  };
+
+  // Check if individual expense can be acted upon
+  const canActOnExpense = (expense) => {
+    if (currentUser?.role === "manager") {
+      return false; // Managers should NOT see individual actions
+    } else if (
+      currentUser?.role === "finance" ||
+      currentUser?.role === "admin"
+    ) {
+      return (
+        expense.status === "manager_approved" || expense.status === "pending"
+      );
+    }
+    return false;
   };
 
   const totals = calculateTotals();
@@ -257,23 +368,22 @@ export default function AdminExpenses() {
     <Box
       sx={{
         minHeight: "100vh",
-        backgroundColor: "#fafbfc",
+        backgroundColor: "#f8fafc",
         position: "relative",
       }}
     >
-      {/* Sticky Header with Glassmorphism */}
+      {/* New UI Navbar - Clean and Modern */}
       <Box
         sx={{
           position: "sticky",
           top: 0,
           zIndex: 1000,
-          backdropFilter: "blur(20px)",
-          backgroundColor: "rgba(255, 255, 255, 0.85)",
-          borderBottom: "1px solid rgba(255, 255, 255, 0.18)",
-          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.1)",
+          backgroundColor: "white",
+          borderBottom: "1px solid #e2e8f0",
+          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
         }}
       >
-        <Box sx={{ maxWidth: 1400, mx: "auto", px: 2, py: 2 }}>
+        <Box sx={{ maxWidth: 1400, mx: "auto", px: 3, py: 2.5 }}>
           <Box
             sx={{
               display: "flex",
@@ -281,67 +391,87 @@ export default function AdminExpenses() {
               alignItems: "center",
             }}
           >
-            {/* Left side - Title and Avatar */}
             <Box sx={{ display: "flex", alignItems: "center" }}>
-              <Avatar
+              <Box
                 sx={{
                   width: 40,
                   height: 40,
-                  mr: 2,
-                  bgcolor: "primary.main",
-                  fontSize: "1.25rem",
+                  borderRadius: "8px",
+                  backgroundColor:
+                    currentUser?.role === "finance" ? "#10b981" : "#3b82f6",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  mr: 3,
                 }}
               >
-                <AdminPanelSettings />
-              </Avatar>
+                {currentUser?.role === "finance" ? (
+                  <AccountBalance sx={{ color: "white", fontSize: 20 }} />
+                ) : (
+                  <AdminPanelSettings sx={{ color: "white", fontSize: 20 }} />
+                )}
+              </Box>
               <Box>
                 <Typography
                   variant="h5"
                   sx={{
                     fontWeight: 700,
-                    color: "text.primary",
+                    color: "#1e293b",
                     lineHeight: 1.2,
                   }}
                 >
-                  Travel Expense Management
+                  {currentUser?.role === "finance" ? "Finance" : "Manager"}{" "}
+                  Dashboard
                 </Typography>
-                <Typography
-                  variant="body2"
-                  sx={{ color: "text.secondary", mt: 0.5 }}
-                >
-                  Review and manage employee expense submissions
+                <Typography variant="body2" sx={{ color: "#64748b", mt: 0.5 }}>
+                  Expense review and approval
                 </Typography>
               </Box>
             </Box>
 
-            {/* Right side - Action buttons */}
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Tooltip title="Home">
-                <IconButton
-                  onClick={handleHome}
-                  sx={{
-                    color: "primary.light",
-                    "&:hover": {
-                      backgroundColor: "rgba(25, 118, 210, 0.08)",
-                    },
-                  }}
-                >
-                  <Home />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Logout">
-                <IconButton
-                  onClick={handleLogout}
-                  sx={{
-                    color: "error.main",
-                    "&:hover": {
-                      backgroundColor: "rgba(211, 47, 47, 0.08)",
-                    },
-                  }}
-                >
-                  <Logout />
-                </IconButton>
-              </Tooltip>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <Chip
+                icon={
+                  currentUser?.role === "finance" ? (
+                    <AccountBalance />
+                  ) : (
+                    <SupervisorAccount />
+                  )
+                }
+                label={currentUser?.role?.toUpperCase()}
+                sx={{
+                  backgroundColor:
+                    currentUser?.role === "finance"
+                      ? "rgba(16, 185, 129, 0.1)"
+                      : "rgba(59, 130, 246, 0.1)",
+                  color:
+                    currentUser?.role === "finance" ? "#10b981" : "#3b82f6",
+                  border: `1px solid ${
+                    currentUser?.role === "finance" ? "#10b981" : "#3b82f6"
+                  }20`,
+                  fontWeight: 600,
+                }}
+              />
+              <IconButton
+                onClick={handleHome}
+                sx={{
+                  backgroundColor: "rgba(59, 130, 246, 0.1)",
+                  color: "#3b82f6",
+                  "&:hover": { backgroundColor: "rgba(59, 130, 246, 0.2)" },
+                }}
+              >
+                <Home />
+              </IconButton>
+              <IconButton
+                onClick={handleLogout}
+                sx={{
+                  backgroundColor: "rgba(239, 68, 68, 0.1)",
+                  color: "#ef4444",
+                  "&:hover": { backgroundColor: "rgba(239, 68, 68, 0.2)" },
+                }}
+              >
+                <Logout />
+              </IconButton>
             </Box>
           </Box>
         </Box>
@@ -354,11 +484,7 @@ export default function AdminExpenses() {
           <Fade in>
             <Alert
               severity="error"
-              sx={{
-                mb: 3,
-                borderRadius: "8px",
-                fontSize: "0.9rem",
-              }}
+              sx={{ mb: 3, borderRadius: "8px", fontSize: "0.9rem" }}
               onClose={() => setError("")}
             >
               {error}
@@ -369,11 +495,7 @@ export default function AdminExpenses() {
           <Fade in>
             <Alert
               severity="success"
-              sx={{
-                mb: 3,
-                borderRadius: "8px",
-                fontSize: "0.9rem",
-              }}
+              sx={{ mb: 3, borderRadius: "8px", fontSize: "0.9rem" }}
               onClose={() => setSuccess("")}
             >
               {success}
@@ -381,7 +503,7 @@ export default function AdminExpenses() {
           </Fade>
         )}
 
-        {/* GitHub-style Professional Stats Cards */}
+        {/* Original UI Stats Cards with Gradients */}
         {stats && (
           <Grid container spacing={2} sx={{ mb: 3 }}>
             {[
@@ -402,7 +524,15 @@ export default function AdminExpenses() {
                 border: "#bf8700",
               },
               {
-                label: "Approved",
+                label: "Manager Approved",
+                value: totals.manager_approved || 0,
+                icon: SupervisorAccount,
+                color: "#0ea5e9",
+                bg: "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
+                border: "#0ea5e9",
+              },
+              {
+                label: "Fully Approved",
                 value: totals.approved,
                 icon: CheckCircle,
                 color: "#1a7f37",
@@ -418,7 +548,7 @@ export default function AdminExpenses() {
                 border: "#cf222e",
               },
             ].map((stat, index) => (
-              <Grid item xs={6} sm={3} key={index}>
+              <Grid item xs={6} sm={2.4} key={index}>
                 <Card
                   elevation={0}
                   sx={{
@@ -492,7 +622,7 @@ export default function AdminExpenses() {
             boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
             display: "flex",
             flexDirection: "column",
-            height: "calc(100vh - 280px)",
+            height: "calc(100vh - 360px)",
           }}
         >
           {/* Filter Tabs */}
@@ -571,7 +701,7 @@ export default function AdminExpenses() {
                 </Typography>
               </Box>
             ) : (
-              /* Bulk Submission Cards */
+              /* Original Style Submission Cards with Improvements */
               <Grid container spacing={2}>
                 {bulkSubmissions.map((submission) => {
                   const submissionStatus = getSubmissionStatus(
@@ -583,9 +713,9 @@ export default function AdminExpenses() {
                   return (
                     <Grid item xs={12} key={submission._id}>
                       <Card
-                        elevation={0}
+                        elevation={1}
                         sx={{
-                          borderRadius: "8px",
+                          borderRadius: "6px",
                           border: "1px solid #d1d5db",
                           transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
                           "&:hover": {
@@ -595,123 +725,192 @@ export default function AdminExpenses() {
                           },
                         }}
                       >
-                        {/* Main Card Header */}
+                        {/* Improved Card Header with Prominent Amount */}
                         <CardContent
                           sx={{ p: 2, cursor: "pointer" }}
                           onClick={() => toggleExpanded(submission._id)}
                         >
+                          {/* Prominent Amount with Status Color */}
+                          <Typography
+                            variant="h5"
+                            sx={{
+                              fontWeight: 800,
+                              color:
+                                submissionStatus === "approved"
+                                  ? "#1a7f37"
+                                  : submissionStatus === "rejected"
+                                  ? "#cf222e"
+                                  : submissionStatus === "manager_approved"
+                                  ? "#37bdfbff"
+                                  : submissionStatus === "pending"
+                                  ? "#bf8700"
+                                  : "#1e293b",
+                              fontFamily: '"SF Mono", "Monaco", monospace',
+                            }}
+                          >
+                            ₹{submission.totalAmount?.toLocaleString()}
+                          </Typography>
                           <Box sx={{ display: "flex", alignItems: "center" }}>
-                            <Avatar
-                              sx={{
-                                width: 32,
-                                height: 32,
-                                bgcolor: `${getStatusColor(
-                                  submissionStatus
-                                )}.main`,
-                                mr: 2,
-                              }}
-                            >
-                              {getStatusIcon(submissionStatus)}
-                            </Avatar>
-
                             <Box sx={{ flexGrow: 1 }}>
                               <Box
                                 sx={{
                                   display: "flex",
                                   alignItems: "center",
-                                  gap: 1,
+                                  gap: 2,
+                                  mb: 0.8,
+                                  pt: 1
                                 }}
                               >
-                                <Typography variant="h6" fontWeight={600}>
-                                  {submission.employeeName} (
-                                  {submission.employeeCode})
+                                {/* Small Employee Name */}
+                                <Typography
+                                  
+                                  sx={{ fontWeight: 600, color: "#293446ff", fontSize: "1rem" }}
+                                >
+                                  {submission.employeeName}
                                 </Typography>
-                                {submission.isResubmitted && (
+                                {/* Subtle Employee Code */}
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    color: "#64748b",
+                                    fontFamily:
+                                      '"SF Mono", "Monaco", monospace',
+                                    backgroundColor: "#edf1f5ff",
+                                    px: 1.5,
+                                    py: 0.5,
+                                    borderRadius: "10px",
+                                    fontSize: "0.75rem",
+                                  }}
+                                >
+                                  {submission.employeeCode}
+                                </Typography>
+                                  {/* Reduced and Subtle Chips */}
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 1,
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                {/* Primary Status */}
+                                {submissionStatus === "approved" && (
                                   <Chip
-                                    label="RESUBMITTED"
+                                    label={`${statusCounts.approved} Approved`}
                                     size="small"
-                                    color="info"
-                                    variant="filled"
-                                    sx={{ fontWeight: 600, fontSize: "0.7rem" }}
+                                    sx={{
+                                      background:
+                                        "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
+                                      color: "#1a7f37",
+                                      border: "1px solid #1a7f3720",
+                                      borderRadius: "20px",
+                                      fontWeight: 600,
+                                      
+                                    }}
                                   />
                                 )}
+                                {submissionStatus === "manager_approved" && (
+                                  <Chip
+                                    label="Manager Approved"
+                                    size="small"
+                                    sx={{
+                                      background:
+                                        "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
+                                      color: "#0ea5e9",
+                                      border: "1px solid #0ea5e920",
+                                      borderRadius: "20px",
+                                      fontWeight: 600,
+                                      fontSize: "0.7rem",
+                                    }}
+                                  />
+                                )}
+                                {submission.overallStatus === "pending" && (
+                                  <Chip
+                                    label={`${statusCounts.pending} Pending`}
+                                    size="small"
+                                    sx={{
+                                      background:
+                                        "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
+                                      color: "#bf8700",
+                                      border: "1px solid #bf870020",
+                                      borderRadius: "20px",
+                                      fontWeight: 600,
+                                      fontSize: "0.7rem"
+                                    }}
+                                  />
+                                )}
+                                {submissionStatus === "rejected" && (
+                                  <Chip
+                                    label={`${statusCounts.rejected} Rejected`}
+                                    size="small"
+                                    sx={{
+                                      background:
+                                        "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
+                                      color: "#cf222e",
+                                      border: "1px solid #cf222e20",
+                                      borderRadius: "20px",
+                                      fontWeight: 600,
+                                      fontSize: "0.7rem"
+                                    }}
+                                  />
+                                )}
+
+                                {/* Resubmitted - Subtle */}
+                                {submission.isResubmitted &&
+                                  submission.resubmissionCount > 0 && (
+                                    <Chip
+                                      label="Resubmitted"
+                                      size="small"
+                                      sx={{
+                                        backgroundColor:
+                                          "rgba(100, 116, 139, 0.1)",
+                                        color: "#64748b",
+                                        border:
+                                          "1px solid rgba(100, 116, 139, 0.2)",
+                                        fontWeight: 500,
+                                        fontSize: "0.7rem",
+                                      }}
+                                    />
+                                  )}
+                              </Box>
                               </Box>
                               <Typography
                                 variant="body2"
                                 color="text.secondary"
+                                sx={{
+                                  fontFamily: '"SF Mono", "Monaco", monospace',
+                                  mb: 0.5
+                                }}
                               >
-                                {submission.expenses.length} expenses •{"  "} ₹
-                                {submission.totalAmount?.toLocaleString()} •
-                                {"  "}
-                                {submission.isResubmitted
+                                {submission.expenses.length} expenses •{" "}
+                                {submission.isResubmitted &&
+                                submission.resubmissionCount > 0
                                   ? `Resubmitted: ${new Date(
                                       submission.resubmittedAt ||
                                         submission.submittedAt
-                                    ).toLocaleDateString()}`
+                                    ).toLocaleString()}`
                                   : `Submitted: ${new Date(
                                       submission.submittedAt
-                                    ).toLocaleDateString()}`}
-                                {"  "}
-                                {submission.resubmissionCount > 0 && (
-                                  <span
-                                    style={{
-                                      color: "#0969da",
-                                      fontWeight: 600,
-                                    }}
-                                  >
-                                    {" "}
-                                    • {submission.resubmissionCount}{" "}
-                                    resubmission
-                                    {submission.resubmissionCount > 1
-                                      ? "s"
-                                      : ""}
-                                  </span>
-                                )}
+                                    ).toLocaleString()}`}
                               </Typography>
                             </Box>
 
-                            <Box sx={{ display: "flex", gap: 1, mr: 2 }}>
-                              {statusCounts.approved && (
-                                <Chip
-                                  label={`${statusCounts.approved} Approved`}
-                                  color="success"
-                                  size="small"
-                                  variant="outlined"
-                                />
-                              )}
-                              {statusCounts.pending && (
-                                <Chip
-                                  label={`${statusCounts.pending} Pending`}
-                                  color="warning"
-                                  size="small"
-                                  variant="outlined"
-                                />
-                              )}
-                              {statusCounts.rejected && (
-                                <Chip
-                                  label={`${statusCounts.rejected} Rejected`}
-                                  color="error"
-                                  size="small"
-                                  variant="outlined"
-                                />
-                              )}
-                            </Box>
-
-                            <IconButton>
+                            <IconButton sx={{ mb: 1 }}>
                               {isExpanded ? <ExpandLess /> : <ExpandMore />}
                             </IconButton>
                           </Box>
                         </CardContent>
 
-                        {/* Expanded Details - Individual Expenses Table */}
+                        {/* Expanded Details */}
                         <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                           <Box sx={{ borderTop: "1px solid #e1e4e8", p: 2 }}>
+                            {/* Expenses Table */}
                             <TableContainer
                               component={Paper}
                               elevation={0}
-                              sx={{ border: "1px solid #e1e4e8" }}
+                              sx={{ border: "1px solid #e1e4e8", mb: 2 }}
                             >
-                              <Table size="small">
+                              <Table size="medium">
                                 <TableHead>
                                   <TableRow sx={{ bgcolor: "grey.50" }}>
                                     <TableCell sx={{ fontWeight: 600 }}>
@@ -741,13 +940,17 @@ export default function AdminExpenses() {
                                         <Chip
                                           label={expense.expenseType}
                                           size="small"
-                                          variant="outlined"
                                         />
                                       </TableCell>
                                       <TableCell>
+                                        {/* Amount with Status Color */}
                                         <Typography
-                                          variant="body2"
-                                          fontWeight={600}
+                                          variant="body1"
+                                          sx={{
+                                            fontFamily:
+                                              '"SF Mono", "Monaco", monospace',
+                                            fontSize: "1rem",
+                                          }}
                                         >
                                           ₹
                                           {parseFloat(
@@ -760,7 +963,7 @@ export default function AdminExpenses() {
                                           <Typography
                                             variant="body2"
                                             noWrap
-                                            sx={{ maxWidth: 100 }}
+                                            sx={{ maxWidth: 150 }}
                                           >
                                             {expense.description}
                                           </Typography>
@@ -768,7 +971,7 @@ export default function AdminExpenses() {
                                       </TableCell>
                                       <TableCell>
                                         <Typography
-                                          variant="caption"
+                                          variant="body2"
                                           display="block"
                                         >
                                           {new Date(
@@ -776,7 +979,7 @@ export default function AdminExpenses() {
                                           ).toLocaleDateString()}
                                         </Typography>
                                         <Typography
-                                          variant="caption"
+                                          variant="body2"
                                           display="block"
                                         >
                                           to{" "}
@@ -785,38 +988,137 @@ export default function AdminExpenses() {
                                           ).toLocaleDateString()}
                                         </Typography>
                                       </TableCell>
-                                      <TableCell noWrap sx={{ minWidth: 150 }}>
+                                      <TableCell noWrap sx={{ minWidth: 200 }}>
                                         <Box>
-                                          <Chip
+                                          {/* Primary Status */}
+                                          {/* <Chip
                                             label={expense.status.toUpperCase()}
                                             color={getStatusColor(
                                               expense.status
                                             )}
                                             size="small"
-                                          />
-                                          {/* Edit Status Indicators */}
-                                          {(expense.isResubmitted ||
-                                            expense.isEdited) && (
-                                            <Box sx={{ mt: 1 }}>
-                                              {expense.isResubmitted && (
-                                                <Chip
-                                                  label="Resubmitted"
-                                                  size="small"
-                                                  color="secondary"
-                                                  variant="outlined"
-                                                  sx={{ mr: 0.5 }}
-                                                />
-                                              )}
-                                              {expense.isEdited && (
-                                                <Chip
-                                                  label="Edited"
-                                                  size="small"
-                                                  color="warning"
-                                                  variant="outlined"
-                                                />
-                                              )}
-                                            </Box>
+                                            sx={{
+                                              mb: 1,
+                                              fontWeight: 600,
+                                              borderRadius: "6px",
+                                            }}
+                                          /> */}
+                                          {expense.status === "approved" && (
+                                            <Chip
+                                              label={`${statusCounts.approved} Approved`}
+                                              size="small"
+                                              sx={{
+                                                background:
+                                                  "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
+                                                color: "#1a7f37",
+                                                border: "1px solid #1a7f3720",
+                                                borderRadius: "20px",
+                                                fontWeight: 600,
+                                                mb: 1,
+                                              }}
+                                            />
                                           )}
+
+                                          {expense.status === "pending" && (
+                                            <Chip
+                                              label={`${statusCounts.pending} Pending`}
+                                              size="small"
+                                              sx={{
+                                                background:
+                                                  "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
+                                                color: "#bf8700",
+                                                border: "1px solid #bf870020",
+                                                borderRadius: "20px",
+                                                fontWeight: 600,
+                                                mb: 1,
+                                              }}
+                                            />
+                                          )}
+                                          {expense.status === "rejected" && (
+                                            <Chip
+                                              label={`${statusCounts.rejected} Rejected`}
+                                              size="small"
+                                              sx={{
+                                                background:
+                                                  "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
+                                                color: "#cf222e",
+                                                border: "1px solid #cf222e20",
+                                                borderRadius: "20px",
+                                                fontWeight: 600,
+                                                mb: 1,
+                                              }}
+                                            />
+                                          )}
+
+                                          {/* Minimal Additional Status Info */}
+                                          <Box
+                                            sx={{
+                                              display: "flex",
+                                              flexWrap: "wrap",
+                                              gap: 0.5,
+                                            }}
+                                          >
+                                            {expense.managerApproval?.status ===
+                                              "approved" && (
+                                              <Chip
+                                                icon={<SupervisorAccount />}
+                                                label="Manager ✓"
+                                                size="small"
+                                                sx={{
+                                                  backgroundColor:
+                                                    "rgba(59, 130, 246, 0.1)",
+                                                  color: "#3b82f6",
+                                                  fontWeight: 500,
+                                                  fontSize: "0.6875rem",
+                                                }}
+                                              />
+                                            )}
+                                            {expense.financeApproval?.status ===
+                                              "approved" && (
+                                              <Chip
+                                                icon={<AccountBalance />}
+                                                label="Finance ✓"
+                                                size="small"
+                                                sx={{
+                                                  backgroundColor:
+                                                    "rgba(16, 185, 129, 0.1)",
+                                                  color: "#10b981",
+                                                  fontWeight: 500,
+                                                  fontSize: "0.6875rem",
+                                                }}
+                                              />
+                                            )}
+
+                                            {/* Subtle Edit indicators */}
+                                            {expense.isResubmitted && (
+                                              <Chip
+                                                label="Resubmitted"
+                                                size="small"
+                                                sx={{
+                                                  backgroundColor:
+                                                    "rgba(100, 116, 139, 0.1)",
+                                                  color: "#64748b",
+                                                  fontWeight: 500,
+                                                  fontSize: "0.6875rem",
+                                                }}
+                                              />
+                                            )}
+                                            {expense.isEdited && (
+                                              <Chip
+                                                label="Edited"
+                                                size="small"
+                                                sx={{
+                                                  backgroundColor:
+                                                    "rgba(245, 158, 11, 0.1)",
+                                                  color: "#f59e0b",
+                                                  fontWeight: 500,
+                                                  fontSize: "0.6875rem",
+                                                }}
+                                              />
+                                            )}
+                                          </Box>
+
+                                          {/* Rejection comments */}
                                           {expense.comments &&
                                             expense.status === "rejected" && (
                                               <Tooltip title={expense.comments}>
@@ -837,6 +1139,7 @@ export default function AdminExpenses() {
                                       </TableCell>
                                       <TableCell>
                                         <Box sx={{ display: "flex", gap: 0.5 }}>
+                                          {/* Only View Document Button */}
                                           {expense.fileName && (
                                             <Tooltip title="View Receipt">
                                               <IconButton
@@ -852,7 +1155,8 @@ export default function AdminExpenses() {
                                             </Tooltip>
                                           )}
 
-                                          {expense.status === "pending" && (
+                                          {/* Individual Approve/Disapprove buttons for Finance only */}
+                                          {canActOnExpense(expense) && (
                                             <>
                                               <Tooltip title="Approve">
                                                 <IconButton
@@ -862,10 +1166,14 @@ export default function AdminExpenses() {
                                                     setActionDialog({
                                                       open: true,
                                                       expense,
+                                                      submission: null,
                                                       action: "approved",
+                                                      type: "individual",
                                                     });
                                                   }}
-                                                  sx={{ color: "success.main" }}
+                                                  sx={{
+                                                    color: "success.main",
+                                                  }}
                                                 >
                                                   <ThumbUp fontSize="small" />
                                                 </IconButton>
@@ -878,7 +1186,9 @@ export default function AdminExpenses() {
                                                     setActionDialog({
                                                       open: true,
                                                       expense,
+                                                      submission: null,
                                                       action: "rejected",
+                                                      type: "individual",
                                                     });
                                                   }}
                                                   sx={{ color: "error.main" }}
@@ -896,71 +1206,218 @@ export default function AdminExpenses() {
                               </Table>
                             </TableContainer>
 
-                            {/* Resubmission and Edit History Information */}
-                            {(submission.isResubmitted ||
-                              submission.expenses.some(
-                                (exp) =>
-                                  exp.editHistory && exp.editHistory.length > 0
-                              )) && (
+                            {/* Simplified Resubmission History with Time */}
+                            {submission.isResubmitted && (
                               <Box
                                 sx={{
                                   mt: 2,
-                                  p: 1.5,
+                                  p: 2,
                                   borderRadius: "8px",
-                                  border: "1px solid",
-                                  borderColor: "primary.main",
-                                  bgcolor: "rgb(219, 234, 255)",
+                                  backgroundColor: "rgba(100, 116, 139, 0.05)",
+                                  border: "1px solid rgba(100, 116, 139, 0.2)",
                                 }}
                               >
-                                {submission.isResubmitted && (
-                                  <Box>
-                                    <Typography
-                                      variant="subtitle2"
-                                      color="info.dark"
-                                      fontWeight={600}
+                                <Typography
+                                  variant="subtitle2"
+                                  sx={{
+                                    color: "#64748b",
+                                    fontWeight: 600,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 1,
+                                    mb: 1,
+                                  }}
+                                >
+                                  <Edit fontSize="small" />
+                                  Resubmission History
+                                </Typography>
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    color: "#64748b",
+                                    fontSize: "0.875rem",
+                                  }}
+                                >
+                                  Originally:{" "}
+                                  {new Date(
+                                    submission.originalSubmittedAt ||
+                                      submission.submittedAt
+                                  ).toLocaleString()}{" "}
+                                  • Resubmitted:{" "}
+                                  {new Date(
+                                    submission.resubmittedAt ||
+                                      submission.submittedAt
+                                  ).toLocaleString()}
+                                </Typography>
+                              </Box>
+                            )}
+
+                            {/* Bulk Action Buttons at Bottom for All Roles */}
+                            {canPerformBulkAction(submission) && (
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  justifyContent: "flex-end",
+                                  gap: 2,
+                                  p: 2,
+                                }}
+                              >
+                                {currentUser?.role === "manager" ? (
+                                  // Manager sees gradient APPROVE/REJECT buttons
+                                  <>
+                                    <Button
+                                      variant="contained"
+                                      size="small"
+                                      startIcon={<CheckCircle />}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActionDialog({
+                                          open: true,
+                                          expense: null,
+                                          submission,
+                                          action: "approved",
+                                          type: "bulk",
+                                        });
+                                      }}
                                       sx={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 1,
+                                        borderRadius: "8px",
+                                        fontWeight: 600,
+                                        px: 1,
+                                        textTransform: "none",
+                                        fontSize: "0.8rem",
+                                        background:
+                                          "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
+                                        color: "#1a7f37",
+                                        border: "1px solid #1a7f3750",
+                                        boxShadow: "none",
+                                        "&:hover": {
+                                          transform: "translateY(-1px)",
+                                          boxShadow:
+                                            "0 4px 12px rgba(26, 127, 55, 0.3)",
+                                          background:
+                                            "linear-gradient(135deg, #bbf7d0 0%, #dcfce7 100%)",
+                                        },
+                                        transition: "all 0.2s ease",
                                       }}
                                     >
-                                      <Edit fontSize="small" />
-                                      Resubmitted Submission
-                                    </Typography>
-                                    <Typography
-                                      variant="body2"
-                                      color="info.dark"
-                                      sx={{ pl: 2 }}
+                                      APPROVE ALL
+                                    </Button>
+                                    <Button
+                                      variant="outlined"
+                                      size="small"
+                                      startIcon={<Cancel />}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActionDialog({
+                                          open: true,
+                                          expense: null,
+                                          submission,
+                                          action: "rejected",
+                                          type: "bulk",
+                                        });
+                                      }}
+                                      sx={{
+                                        borderRadius: "8px",
+                                        fontWeight: 600,
+                                        px: 1,
+                                        textTransform: "none",
+                                        fontSize: "0.8rem",
+                                        background:
+                                          "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
+                                        color: "#cf222e",
+                                        border: "1px solid #cf222e50",
+                                        "&:hover": {
+                                          transform: "translateY(-1px)",
+                                          boxShadow:
+                                            "0 4px 12px rgba(207, 34, 46, 0.3)",
+                                          background:
+                                            "linear-gradient(135deg, #fecaca 0%, #fee2e2 100%)",
+                                        },
+                                        transition: "all 0.2s ease",
+                                      }}
                                     >
-                                      Originally submitted:{" "}
-                                      {new Date(
-                                        submission.originalSubmittedAt ||
-                                          submission.submittedAt
-                                      ).toLocaleDateString()}
-                                    </Typography>
-                                    <Typography
-                                      variant="body2"
-                                      color="info.dark"
-                                      sx={{ pl: 2 }}
+                                      REJECT ALL
+                                    </Button>
+                                  </>
+                                ) : (
+                                  // Finance/Admin sees gradient action buttons
+                                  <>
+                                    <Button
+                                      variant="contained"
+                                      size="medium"
+                                      startIcon={<AccountBalance />}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActionDialog({
+                                          open: true,
+                                          expense: null,
+                                          submission,
+                                          action: "approved",
+                                          type: "bulk",
+                                        });
+                                      }}
+                                      sx={{
+                                        borderRadius: "8px",
+                                        fontWeight: 600,
+                                        px: 3,
+                                        py: 1,
+                                        textTransform: "none",
+                                        fontSize: "0.875rem",
+                                        background:
+                                          "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
+                                        color: "#1a7f37",
+                                        border: "1px solid #1a7f3750",
+                                        boxShadow: "none",
+                                        "&:hover": {
+                                          transform: "translateY(-1px)",
+                                          boxShadow:
+                                            "0 4px 12px rgba(26, 127, 55, 0.3)",
+                                          background:
+                                            "linear-gradient(135deg, #bbf7d0 0%, #dcfce7 100%)",
+                                        },
+                                        transition: "all 0.2s ease",
+                                      }}
                                     >
-                                      Last resubmitted:{" "}
-                                      {new Date(
-                                        submission.resubmittedAt ||
-                                          submission.submittedAt
-                                      ).toLocaleDateString()}
-                                    </Typography>
-                                    {submission.resubmissionCount > 0 && (
-                                      <Typography
-                                        variant="body2"
-                                        color="info.dark"
-                                        fontWeight={600}
-                                        sx={{ pt: 2, pl: 2 }}
-                                      >
-                                        Total resubmissions:{" "}
-                                        {submission.resubmissionCount}
-                                      </Typography>
-                                    )}
-                                  </Box>
+                                      Approve All
+                                    </Button>
+                                    <Button
+                                      variant="outlined"
+                                      size="medium"
+                                      startIcon={<Cancel />}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActionDialog({
+                                          open: true,
+                                          expense: null,
+                                          submission,
+                                          action: "rejected",
+                                          type: "bulk",
+                                        });
+                                      }}
+                                      sx={{
+                                        borderRadius: "8px",
+                                        fontWeight: 600,
+                                        px: 3,
+                                        py: 1,
+                                        textTransform: "none",
+                                        fontSize: "0.875rem",
+                                        background:
+                                          "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
+                                        color: "#cf222e",
+                                        border: "1px solid #cf222e50",
+                                        "&:hover": {
+                                          transform: "translateY(-1px)",
+                                          boxShadow:
+                                            "0 4px 12px rgba(207, 34, 46, 0.3)",
+                                          background:
+                                            "linear-gradient(135deg, #fecaca 0%, #fee2e2 100%)",
+                                        },
+                                        transition: "all 0.2s ease",
+                                      }}
+                                    >
+                                      Reject All
+                                    </Button>
+                                  </>
                                 )}
                               </Box>
                             )}
@@ -979,7 +1436,13 @@ export default function AdminExpenses() {
         <Dialog
           open={actionDialog.open}
           onClose={() => {
-            setActionDialog({ open: false, expense: null, action: "" });
+            setActionDialog({
+              open: false,
+              expense: null,
+              submission: null,
+              action: "",
+              type: "individual",
+            });
             setComments("");
           }}
           maxWidth="sm"
@@ -1002,15 +1465,22 @@ export default function AdminExpenses() {
                 }}
               >
                 {actionDialog.action === "approved" ? (
-                  <ThumbUp />
-                ) : (
+                  currentUser?.role === "manager" ? (
+                    <SupervisorAccount />
+                  ) : (
+                    <AccountBalance />
+                  )
+                ) : actionDialog.action === "rejected" ? (
                   <ThumbDown />
+                ) : (
+                  <Assessment />
                 )}
               </Avatar>
               <Box>
                 <Typography variant="h6" fontWeight={600}>
+                  {currentUser?.role === "manager" ? "Manager" : "Finance"}{" "}
                   {actionDialog.action === "approved" ? "Approve" : "Reject"}{" "}
-                  Expense
+                  {actionDialog.type === "bulk" ? "All Expenses" : "Expense"}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Review and confirm your decision
@@ -1020,88 +1490,131 @@ export default function AdminExpenses() {
           </DialogTitle>
           <DialogContent>
             <Stack spacing={2}>
+              {/* Employee Details */}
               <Paper
                 elevation={0}
                 sx={{ p: 2, bgcolor: "grey.50", borderRadius: "8px" }}
               >
                 <Typography variant="subtitle2" gutterBottom>
-                  Employee Details
+                  Employee Details:
                 </Typography>
                 <Typography variant="body2">
-                  <strong>{actionDialog.expense?.employeeName}</strong> (
-                  {actionDialog.expense?.employeeCode})
+                  <strong>
+                    {actionDialog.submission?.employeeName ||
+                      bulkSubmissions.find((sub) =>
+                        sub.expenses.some(
+                          (exp) => exp._id === actionDialog.expense?._id
+                        )
+                      )?.employeeName}
+                  </strong>{" "}
+                  (
+                  {actionDialog.submission?.employeeCode ||
+                    bulkSubmissions.find((sub) =>
+                      sub.expenses.some(
+                        (exp) => exp._id === actionDialog.expense?._id
+                      )
+                    )?.employeeCode}
+                  )
                 </Typography>
               </Paper>
 
-              <Paper
-                elevation={0}
-                sx={{ p: 2, bgcolor: "grey.50", borderRadius: "8px" }}
-              >
-                <Typography variant="subtitle2" gutterBottom>
-                  Expense Details
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  <strong>Type:</strong> {actionDialog.expense?.expenseType}
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  <strong>Amount:</strong> ₹{actionDialog.expense?.amount}
-                </Typography>
-                <Typography variant="body2" sx={{ mb: 1 }}>
-                  <strong>Description:</strong>{" "}
-                  {actionDialog.expense?.description}
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Travel Period:</strong>{" "}
-                  {actionDialog.expense?.travelStartDate
-                    ? new Date(
-                        actionDialog.expense.travelStartDate
-                      ).toLocaleDateString()
-                    : "Not available"}{" "}
-                  -{" "}
-                  {actionDialog.expense?.travelEndDate
-                    ? new Date(
-                        actionDialog.expense.travelEndDate
-                      ).toLocaleDateString()
-                    : "Not available"}
-                </Typography>
-              </Paper>
+              {/* Expense Details */}
+              {actionDialog.type === "individual" && actionDialog.expense && (
+                <Paper
+                  elevation={0}
+                  sx={{ p: 2, bgcolor: "grey.50", borderRadius: "8px" }}
+                >
+                  <Typography variant="subtitle2" gutterBottom>
+                    Expense Details
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    <strong>Type:</strong> {actionDialog.expense.expenseType}
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    <strong>Amount:</strong> ₹{actionDialog.expense.amount}
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    <strong>Description:</strong>{" "}
+                    {actionDialog.expense.description}
+                  </Typography>
+                  <Typography variant="body2">
+                    <strong>Travel Period:</strong>{" "}
+                    {actionDialog.expense.travelStartDate
+                      ? new Date(
+                          actionDialog.expense.travelStartDate
+                        ).toLocaleDateString()
+                      : "Not available"}{" "}
+                    -{" "}
+                    {actionDialog.expense.travelEndDate
+                      ? new Date(
+                          actionDialog.expense.travelEndDate
+                        ).toLocaleDateString()
+                      : "Not available"}
+                  </Typography>
+                </Paper>
+              )}
 
-              {actionDialog.expense?.editHistory &&
-                actionDialog.expense.editHistory.length > 0 && (
-                  <Paper
-                    elevation={0}
-                    sx={{ p: 2, bgcolor: "info.light", borderRadius: "8px" }}
+              {/* Bulk Action Details */}
+              {actionDialog.type === "bulk" && actionDialog.submission && (
+                <Paper
+                  elevation={0}
+                  sx={{ p: 2, bgcolor: "grey.50", borderRadius: "8px" }}
+                >
+                  <Typography variant="subtitle2" gutterBottom>
+                    Bulk Action Details
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    <strong>Total Expenses:</strong>{" "}
+                    {actionDialog.submission.expenses.length}
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    <strong>Total Amount:</strong> ₹
+                    {actionDialog.submission.totalAmount?.toLocaleString()}
+                  </Typography>
+                  <Typography variant="body2">
+                    <strong>Action:</strong>{" "}
+                    {actionDialog.action === "approved" ? "Approve" : "Reject"}{" "}
+                    all expenses in this submission
+                  </Typography>
+                </Paper>
+              )}
+
+              {/* Approval History */}
+              {actionDialog.expense?.managerApproval && (
+                <Paper
+                  elevation={0}
+                  sx={{ p: 2, bgcolor: "info.50", borderRadius: "8px" }}
+                >
+                  <Typography
+                    variant="subtitle2"
+                    gutterBottom
+                    color="info.dark"
                   >
-                    <Typography
-                      variant="subtitle2"
-                      gutterBottom
-                      color="info.dark"
-                    >
-                      Edit History ({actionDialog.expense.editHistory.length}{" "}
-                      edit
-                      {actionDialog.expense.editHistory.length > 1 ? "s" : ""})
-                    </Typography>
+                    Previous Approvals:
+                  </Typography>
+                  {actionDialog.expense.managerApproval.status ===
+                    "approved" && (
                     <Typography variant="body2" color="info.dark">
-                      Last edited:{" "}
+                      <strong>Manager:</strong> Approved by{" "}
+                      {actionDialog.expense.managerApproval.reviewedByName} on{" "}
                       {new Date(
-                        actionDialog.expense.editHistory[
-                          actionDialog.expense.editHistory.length - 1
-                        ].editDate
-                      ).toLocaleString()}
+                        actionDialog.expense.managerApproval.reviewedAt
+                      ).toLocaleDateString()}
                     </Typography>
-                    {actionDialog.expense.isResubmitted && (
-                      <Typography variant="body2" color="info.dark">
-                        Status: Resubmitted after rejection
-                      </Typography>
-                    )}
-                  </Paper>
-                )}
+                  )}
+                </Paper>
+              )}
 
+              {/* Comments Field */}
               <TextField
                 label={
                   actionDialog.action === "approved"
-                    ? "Approval Comments (Optional)"
-                    : "Rejection Reason"
+                    ? `${
+                        currentUser?.role === "manager" ? "Manager" : "Finance"
+                      } Approval Comments (Optional)`
+                    : `${
+                        currentUser?.role === "manager" ? "Manager" : "Finance"
+                      } Rejection Reason (Required)`
                 }
                 value={comments}
                 onChange={(e) => setComments(e.target.value)}
@@ -1111,8 +1624,14 @@ export default function AdminExpenses() {
                 required={actionDialog.action === "rejected"}
                 placeholder={
                   actionDialog.action === "approved"
-                    ? "Add any approval notes..."
-                    : "Please provide a reason for rejection..."
+                    ? "Add any approval notes (optional)..."
+                    : "Please provide a reason for rejection (required)..."
+                }
+                error={actionDialog.action === "rejected" && !comments.trim()}
+                helperText={
+                  actionDialog.action === "rejected" && !comments.trim()
+                    ? "Rejection reason is required"
+                    : ""
                 }
                 sx={{
                   "& .MuiOutlinedInput-root": {
@@ -1125,7 +1644,13 @@ export default function AdminExpenses() {
           <DialogActions sx={{ p: 3, pt: 1 }}>
             <Button
               onClick={() => {
-                setActionDialog({ open: false, expense: null, action: "" });
+                setActionDialog({
+                  open: false,
+                  expense: null,
+                  submission: null,
+                  action: "",
+                  type: "individual",
+                });
                 setComments("");
               }}
               variant="outlined"
@@ -1134,7 +1659,11 @@ export default function AdminExpenses() {
               Cancel
             </Button>
             <Button
-              onClick={handleAction}
+              onClick={
+                actionDialog.type === "bulk"
+                  ? handleBulkAction
+                  : handleIndividualAction
+              }
               color={actionDialog.action === "approved" ? "success" : "error"}
               variant="contained"
               disabled={actionDialog.action === "rejected" && !comments.trim()}
@@ -1147,8 +1676,12 @@ export default function AdminExpenses() {
               }}
             >
               {actionDialog.action === "approved"
-                ? "Approve Expense"
-                : "Reject Expense"}
+                ? `${
+                    currentUser?.role === "manager" ? "Manager" : "Finance"
+                  } Approve ${actionDialog.type === "bulk" ? "All" : "Expense"}`
+                : `${
+                    currentUser?.role === "manager" ? "Manager" : "Finance"
+                  } Reject ${actionDialog.type === "bulk" ? "All" : "Expense"}`}
             </Button>
           </DialogActions>
         </Dialog>
