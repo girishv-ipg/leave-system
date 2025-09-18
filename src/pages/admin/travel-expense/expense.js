@@ -5,8 +5,6 @@ import {
   AccountBalance,
   AdminPanelSettings,
   Assessment,
-  AttachMoney,
-  CalendarToday,
   Cancel,
   CheckCircle,
   Comment,
@@ -69,10 +67,11 @@ export default function AdminExpenses() {
   const [bulkSubmissions, setBulkSubmissions] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("pending");
+  const [activeTab, setActiveTab] = useState("all");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [expandedSubmission, setExpandedSubmission] = useState(null);
+  const [initialLoad, setInitialLoad] = useState(false);
   const [actionDialog, setActionDialog] = useState({
     open: false,
     expense: null,
@@ -137,9 +136,34 @@ export default function AdminExpenses() {
     }
   };
 
-  useEffect(() => {
+// Initial load - get stats
+useEffect(() => {
+  const fetchInitialData = async () => {
+     const token = localStorage.getItem("token");
+      if (!token) {
+        setError("Please login first");
+        return;
+      }
+    const response = await axiosInstance.get("/admin/expenses", {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { 
+        status: "pending", 
+        includeStats: "true"  // Only on first load
+      },
+    });
+    setBulkSubmissions(response.data.bulkSubmissions || []);
+    setStats(response.data.stats);
+  };
+  
+  fetchInitialData();
+}, []);
+
+// Tab changes - no stats
+useEffect(() => {
+  if (activeTab !== "all") { // Skip initial tab since already loaded above
     fetchExpenses(activeTab);
-  }, [activeTab]);
+  }
+}, [activeTab]);
 
   const handleLogout = () => {
     localStorage.removeItem("user");
@@ -149,6 +173,10 @@ export default function AdminExpenses() {
 
   const handleHome = () => {
     router.push("/main");
+  };
+
+  const handleCreateExpense = () => {
+    router.push("/employee/travel-expense/upload");
   };
 
   // Handle individual expense action
@@ -246,51 +274,6 @@ export default function AdminExpenses() {
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "approved":
-        return "success";
-      case "rejected":
-        return "error";
-      case "pending":
-        return "warning";
-      case "manager_approved":
-        return "info";
-      default:
-        return "default";
-    }
-  };
-
-  const getStatusGradient = (status) => {
-    switch (status) {
-      case "approved":
-        return "linear-gradient(135deg, #10b981 0%, #059669 100%)";
-      case "rejected":
-        return "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)";
-      case "pending":
-        return "linear-gradient(135deg, #f97316 0%, #ea580c 100%)";
-      case "manager_approved":
-        return "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)";
-      default:
-        return "linear-gradient(135deg, #6b7280 0%, #4b5563 100%)";
-    }
-  };
-
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case "approved":
-        return <CheckCircle />;
-      case "rejected":
-        return <Cancel />;
-      case "pending":
-        return <Schedule />;
-      case "manager_approved":
-        return <SupervisorAccount />;
-      default:
-        return <Assessment />;
-    }
-  };
-
   const getSubmissionStatus = (expenses) => {
     const statuses = expenses.map((exp) => exp.status);
     if (statuses.every((status) => status === "approved")) return "approved";
@@ -313,9 +296,9 @@ export default function AdminExpenses() {
   };
 
   const calculateTotals = () => {
-    const allExpenses = bulkSubmissions.flatMap(
-      (submission) => submission.expenses
-    );
+  const allExpenses = bulkSubmissions.flatMap(
+  (submission) => Array.isArray(submission.expenses) ? submission.expenses : []
+);
     return allExpenses.reduce(
       (acc, expense) => {
         acc.total += parseFloat(expense.amount) || 0;
@@ -420,7 +403,7 @@ export default function AdminExpenses() {
                     lineHeight: 1.2,
                   }}
                 >
-                  {currentUser?.role === "finance" ? "Finance" : "Manager"}{" "}
+                  {currentUser?.role === "finance" ? "Finance" : currentUser?.role === "manager" ? "Manager" : "Admin"}{" "}
                   Dashboard
                 </Typography>
                 <Typography variant="body2" sx={{ color: "#64748b", mt: 0.5 }}>
@@ -452,17 +435,32 @@ export default function AdminExpenses() {
                   fontWeight: 600,
                 }}
               />
-              <IconButton
-                onClick={handleHome}
-                sx={{
-                  backgroundColor: "rgba(59, 130, 246, 0.1)",
-                  color: "#3b82f6",
-                  "&:hover": { backgroundColor: "rgba(59, 130, 246, 0.2)" },
-                }}
-              >
-                <Home />
-              </IconButton>
-              <IconButton
+              <Tooltip title="Home">
+                <IconButton
+                  onClick={handleHome}
+                  sx={{
+                    backgroundColor: "rgba(59, 130, 246, 0.1)",
+                    color: "#3b82f6",
+                    "&:hover": { backgroundColor: "rgba(59, 130, 246, 0.2)" },
+                  }}
+                >
+                  <Home />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Add New Expense">
+                <IconButton
+                  onClick={handleCreateExpense}
+                  sx={{
+                    backgroundColor: "rgba(143, 59, 246, 0.1)",
+                    color: "#413bf6ff",
+                    "&:hover": { backgroundColor: "rgba(96, 59, 246, 0.2)" },
+                  }}
+                >
+                  <Receipt />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Logout">
+                <IconButton
                 onClick={handleLogout}
                 sx={{
                   backgroundColor: "rgba(239, 68, 68, 0.1)",
@@ -472,6 +470,7 @@ export default function AdminExpenses() {
               >
                 <Logout />
               </IconButton>
+              </Tooltip>
             </Box>
           </Box>
         </Box>
@@ -550,7 +549,7 @@ export default function AdminExpenses() {
             ].map((stat, index) => (
               <Grid item xs={6} sm={2.4} key={index}>
                 <Card
-                  elevation={0}
+                  elevation={1}
                   sx={{
                     borderRadius: "8px",
                     background: stat.bg,
@@ -716,7 +715,7 @@ export default function AdminExpenses() {
                         elevation={1}
                         sx={{
                           borderRadius: "6px",
-                          border: "1px solid #d1d5db",
+                          border: "0.1px solid #d1d5db",
                           transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
                           "&:hover": {
                             transform: "translateY(-1px)",
@@ -758,13 +757,16 @@ export default function AdminExpenses() {
                                   alignItems: "center",
                                   gap: 2,
                                   mb: 0.8,
-                                  pt: 1
+                                  pt: 1,
                                 }}
                               >
                                 {/* Small Employee Name */}
                                 <Typography
-                                  
-                                  sx={{ fontWeight: 600, color: "#293446ff", fontSize: "1rem" }}
+                                  sx={{
+                                    fontWeight: 600,
+                                    color: "#293446ff",
+                                    fontSize: "1rem",
+                                  }}
                                 >
                                   {submission.employeeName}
                                 </Typography>
@@ -784,102 +786,102 @@ export default function AdminExpenses() {
                                 >
                                   {submission.employeeCode}
                                 </Typography>
-                                  {/* Reduced and Subtle Chips */}
-                              <Box
-                                sx={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 1,
-                                  flexWrap: "wrap",
-                                }}
-                              >
-                                {/* Primary Status */}
-                                {submissionStatus === "approved" && (
-                                  <Chip
-                                    label={`${statusCounts.approved} Approved`}
-                                    size="small"
-                                    sx={{
-                                      background:
-                                        "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
-                                      color: "#1a7f37",
-                                      border: "1px solid #1a7f3720",
-                                      borderRadius: "20px",
-                                      fontWeight: 600,
-                                      
-                                    }}
-                                  />
-                                )}
-                                {submissionStatus === "manager_approved" && (
-                                  <Chip
-                                    label="Manager Approved"
-                                    size="small"
-                                    sx={{
-                                      background:
-                                        "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
-                                      color: "#0ea5e9",
-                                      border: "1px solid #0ea5e920",
-                                      borderRadius: "20px",
-                                      fontWeight: 600,
-                                      fontSize: "0.7rem",
-                                    }}
-                                  />
-                                )}
-                                {submission.overallStatus === "pending" && (
-                                  <Chip
-                                    label={`${statusCounts.pending} Pending`}
-                                    size="small"
-                                    sx={{
-                                      background:
-                                        "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
-                                      color: "#bf8700",
-                                      border: "1px solid #bf870020",
-                                      borderRadius: "20px",
-                                      fontWeight: 600,
-                                      fontSize: "0.7rem"
-                                    }}
-                                  />
-                                )}
-                                {submissionStatus === "rejected" && (
-                                  <Chip
-                                    label={`${statusCounts.rejected} Rejected`}
-                                    size="small"
-                                    sx={{
-                                      background:
-                                        "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
-                                      color: "#cf222e",
-                                      border: "1px solid #cf222e20",
-                                      borderRadius: "20px",
-                                      fontWeight: 600,
-                                      fontSize: "0.7rem"
-                                    }}
-                                  />
-                                )}
-
-                                {/* Resubmitted - Subtle */}
-                                {submission.isResubmitted &&
-                                  submission.resubmissionCount > 0 && (
+                                {/* Reduced and Subtle Chips */}
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 1,
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  {/* Primary Status */}
+                                  {submissionStatus === "approved" && (
                                     <Chip
-                                      label="Resubmitted"
+                                      label={`${statusCounts.approved} Approved`}
                                       size="small"
                                       sx={{
-                                        backgroundColor:
-                                          "rgba(100, 116, 139, 0.1)",
-                                        color: "#64748b",
-                                        border:
-                                          "1px solid rgba(100, 116, 139, 0.2)",
-                                        fontWeight: 500,
+                                        background:
+                                          "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
+                                        color: "#1a7f37",
+                                        border: "1px solid #1a7f3720",
+                                        borderRadius: "20px",
+                                        fontWeight: 600,
+                                         fontSize: "0.7rem"
+                                      }}
+                                    />
+                                  )}
+                                  {submissionStatus === "manager_approved" && (
+                                    <Chip
+                                      label="Manager Approved"
+                                      size="small"
+                                      sx={{
+                                        background:
+                                          "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
+                                        color: "#0ea5e9",
+                                        border: "1px solid #0ea5e920",
+                                        borderRadius: "20px",
+                                        fontWeight: 600,
                                         fontSize: "0.7rem",
                                       }}
                                     />
                                   )}
-                              </Box>
+                                  {submission.overallStatus === "pending" && (
+                                    <Chip
+                                      label={`${statusCounts.pending} Pending`}
+                                      size="small"
+                                      sx={{
+                                        background:
+                                          "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
+                                        color: "#bf8700",
+                                        border: "1px solid #bf870020",
+                                        borderRadius: "20px",
+                                        fontWeight: 600,
+                                        fontSize: "0.7rem",
+                                      }}
+                                    />
+                                  )}
+                                  {submissionStatus === "rejected" && (
+                                    <Chip
+                                      label={`${statusCounts.rejected} Rejected`}
+                                      size="small"
+                                      sx={{
+                                        background:
+                                          "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
+                                        color: "#cf222e",
+                                        border: "1px solid #cf222e20",
+                                        borderRadius: "20px",
+                                        fontWeight: 600,
+                                        fontSize: "0.7rem",
+                                      }}
+                                    />
+                                  )}
+
+                                  {/* Resubmitted - Subtle */}
+                                  {submission.isResubmitted &&
+                                    submission.resubmissionCount > 0 && (
+                                      <Chip
+                                        label="Resubmitted"
+                                        size="small"
+                                        sx={{
+                                          backgroundColor:
+                                            "rgba(100, 116, 139, 0.1)",
+                                          color: "#64748b",
+                                          border:
+                                            "1px solid rgba(100, 116, 139, 0.2)",
+                                          fontWeight: 500,
+                                          fontSize: "0.7rem",
+                                        }}
+                                      />
+                                    )}
+                                </Box>
                               </Box>
                               <Typography
                                 variant="body2"
                                 color="text.secondary"
                                 sx={{
                                   fontFamily: '"SF Mono", "Monaco", monospace',
-                                  mb: 0.5
+                                  mb: 0.5,
                                 }}
                               >
                                 {submission.expenses.length} expenses •{" "}
@@ -991,18 +993,6 @@ export default function AdminExpenses() {
                                       <TableCell noWrap sx={{ minWidth: 200 }}>
                                         <Box>
                                           {/* Primary Status */}
-                                          {/* <Chip
-                                            label={expense.status.toUpperCase()}
-                                            color={getStatusColor(
-                                              expense.status
-                                            )}
-                                            size="small"
-                                            sx={{
-                                              mb: 1,
-                                              fontWeight: 600,
-                                              borderRadius: "6px",
-                                            }}
-                                          /> */}
                                           {expense.status === "approved" && (
                                             <Chip
                                               label={`${statusCounts.approved} Approved`}
@@ -1015,6 +1005,7 @@ export default function AdminExpenses() {
                                                 borderRadius: "20px",
                                                 fontWeight: 600,
                                                 mb: 1,
+                                                 fontSize: "0.7rem"
                                               }}
                                             />
                                           )}
@@ -1031,6 +1022,7 @@ export default function AdminExpenses() {
                                                 borderRadius: "20px",
                                                 fontWeight: 600,
                                                 mb: 1,
+                                                fontSize: "0.7rem"
                                               }}
                                             />
                                           )}
@@ -1069,7 +1061,7 @@ export default function AdminExpenses() {
                                                     "rgba(59, 130, 246, 0.1)",
                                                   color: "#3b82f6",
                                                   fontWeight: 500,
-                                                  fontSize: "0.6875rem",
+                                                  fontSize: "0.7rem",
                                                 }}
                                               />
                                             )}
@@ -1084,7 +1076,7 @@ export default function AdminExpenses() {
                                                     "rgba(16, 185, 129, 0.1)",
                                                   color: "#10b981",
                                                   fontWeight: 500,
-                                                  fontSize: "0.6875rem",
+                                                  fontSize: "0.7rem",
                                                 }}
                                               />
                                             )}
@@ -1099,7 +1091,7 @@ export default function AdminExpenses() {
                                                     "rgba(100, 116, 139, 0.1)",
                                                   color: "#64748b",
                                                   fontWeight: 500,
-                                                  fontSize: "0.6875rem",
+                                                  fontSize: "0.7rem",
                                                 }}
                                               />
                                             )}
@@ -1112,7 +1104,7 @@ export default function AdminExpenses() {
                                                     "rgba(245, 158, 11, 0.1)",
                                                   color: "#f59e0b",
                                                   fontWeight: 500,
-                                                  fontSize: "0.6875rem",
+                                                  fontSize: "0.7rem",
                                                 }}
                                               />
                                             )}
@@ -1127,7 +1119,8 @@ export default function AdminExpenses() {
                                                   color="error"
                                                   display="block"
                                                   sx={{
-                                                    mt: 0.5,
+                                                    mt: 1,
+                                                    pl: 0.5,
                                                     cursor: "pointer",
                                                   }}
                                                 >
@@ -1340,83 +1333,7 @@ export default function AdminExpenses() {
                                     </Button>
                                   </>
                                 ) : (
-                                  // Finance/Admin sees gradient action buttons
                                   <>
-                                    <Button
-                                      variant="contained"
-                                      size="medium"
-                                      startIcon={<AccountBalance />}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActionDialog({
-                                          open: true,
-                                          expense: null,
-                                          submission,
-                                          action: "approved",
-                                          type: "bulk",
-                                        });
-                                      }}
-                                      sx={{
-                                        borderRadius: "8px",
-                                        fontWeight: 600,
-                                        px: 3,
-                                        py: 1,
-                                        textTransform: "none",
-                                        fontSize: "0.875rem",
-                                        background:
-                                          "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
-                                        color: "#1a7f37",
-                                        border: "1px solid #1a7f3750",
-                                        boxShadow: "none",
-                                        "&:hover": {
-                                          transform: "translateY(-1px)",
-                                          boxShadow:
-                                            "0 4px 12px rgba(26, 127, 55, 0.3)",
-                                          background:
-                                            "linear-gradient(135deg, #bbf7d0 0%, #dcfce7 100%)",
-                                        },
-                                        transition: "all 0.2s ease",
-                                      }}
-                                    >
-                                      Approve All
-                                    </Button>
-                                    <Button
-                                      variant="outlined"
-                                      size="medium"
-                                      startIcon={<Cancel />}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActionDialog({
-                                          open: true,
-                                          expense: null,
-                                          submission,
-                                          action: "rejected",
-                                          type: "bulk",
-                                        });
-                                      }}
-                                      sx={{
-                                        borderRadius: "8px",
-                                        fontWeight: 600,
-                                        px: 3,
-                                        py: 1,
-                                        textTransform: "none",
-                                        fontSize: "0.875rem",
-                                        background:
-                                          "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
-                                        color: "#cf222e",
-                                        border: "1px solid #cf222e50",
-                                        "&:hover": {
-                                          transform: "translateY(-1px)",
-                                          boxShadow:
-                                            "0 4px 12px rgba(207, 34, 46, 0.3)",
-                                          background:
-                                            "linear-gradient(135deg, #fecaca 0%, #fee2e2 100%)",
-                                        },
-                                        transition: "all 0.2s ease",
-                                      }}
-                                    >
-                                      Reject All
-                                    </Button>
                                   </>
                                 )}
                               </Box>
@@ -1466,7 +1383,7 @@ export default function AdminExpenses() {
               >
                 {actionDialog.action === "approved" ? (
                   currentUser?.role === "manager" ? (
-                    <SupervisorAccount />
+                    <ThumbUp />
                   ) : (
                     <AccountBalance />
                   )

@@ -5,10 +5,22 @@ const axiosInstance = axios.create({
   baseURL: "http://IPGNB10348:4000/",
   // baseURL: "http://localhost:4000/",
   timeout: 50000,
-  headers: {
-    "Content-Type": "application/json",
-  },
 });
+
+// Add a request interceptor to set Content-Type for JSON requests only
+axiosInstance.interceptors.request.use(
+  (config) => {
+    // Only set application/json for requests that aren't FormData
+    if (!(config.data instanceof FormData)) {
+      config.headers['Content-Type'] = 'application/json';
+    }
+    // For FormData, let the browser set the Content-Type with boundary
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
 
 export default axiosInstance;
 

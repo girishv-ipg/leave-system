@@ -1,7 +1,6 @@
 const { ObjectId } = require("mongodb");
 const { getDb } = require("../lib/mongo"); // Use your existing DB connection
 
-
 // Get single expense with file data (for viewing documents)
 const getExpenseById = async (req, res) => {
   try {
@@ -12,7 +11,11 @@ const getExpenseById = async (req, res) => {
     let query = {};
 
     // Employees can only access their own expenses
-    if (user.role !== "admin" && user.role !== "manager" && user.role !== "finance") {
+    if (
+      user.role !== "admin" &&
+      user.role !== "manager" &&
+      user.role !== "finance"
+    ) {
       query.employeeId = user.userId;
     }
 
@@ -55,7 +58,11 @@ const getExpenseFile = async (req, res) => {
     let query = { "expenses._id": expenseId };
 
     // Only allow access to their own documents unless admin/manager/finance
-    if (user.role !== "admin" && user.role !== "manager" && user.role !== "finance") {
+    if (
+      user.role !== "admin" &&
+      user.role !== "manager" &&
+      user.role !== "finance"
+    ) {
       query.employeeId = user.userId;
     }
 
@@ -72,7 +79,9 @@ const getExpenseFile = async (req, res) => {
     );
 
     if (!expense || !expense.fileData || !expense.fileType) {
-      return res.status(404).json({ error: "File not available for this expense" });
+      return res
+        .status(404)
+        .json({ error: "File not available for this expense" });
     }
 
     res.json(expense);
@@ -87,9 +96,6 @@ const submitBulkExpenses = async (req, res) => {
   try {
     const db = await getDb();
     const user = req.user;
-
-    console.log("Request body:", req.body);
-    console.log("Request files:", req.files);
 
     // Parse expenses from FormData
     let expensesData;
@@ -132,7 +138,6 @@ const submitBulkExpenses = async (req, res) => {
 
     // Process files if any
     const files = req.files || [];
-    console.log("Files array length:", files.length);
 
     // Create expense objects with enhanced approval tracking
     const expenses = expensesData.map((expenseData, index) => {
@@ -151,7 +156,7 @@ const submitBulkExpenses = async (req, res) => {
         isEdited: false,
         editedAt: null,
         editHistory: [],
-        
+
         // Enhanced approval tracking
         managerApproval: {
           status: null, // null, "approved", "rejected"
@@ -167,7 +172,7 @@ const submitBulkExpenses = async (req, res) => {
           reviewedAt: null,
           comments: null,
         },
-        
+
         // Legacy fields for backward compatibility
         reviewedAt: null,
         comments: null,
@@ -180,9 +185,6 @@ const submitBulkExpenses = async (req, res) => {
         expenseData.fileIndex !== undefined
       ) {
         const fileIndex = parseInt(expenseData.fileIndex);
-        console.log(
-          `Processing file for expense ${index}, fileIndex: ${fileIndex}`
-        );
 
         if (fileIndex >= 0 && fileIndex < files.length) {
           const file = files[fileIndex];
@@ -192,7 +194,6 @@ const submitBulkExpenses = async (req, res) => {
               expense.fileType = file.mimetype;
               expense.fileSize = file.size;
               expense.fileData = file.buffer.toString("base64");
-              console.log(`File attached successfully for expense ${index}`);
             } catch (fileError) {
               console.error(
                 `Error processing file for expense ${index}:`,
@@ -226,27 +227,21 @@ const submitBulkExpenses = async (req, res) => {
       resubmissionCount: 0,
       totalAmount,
       expenses,
-      
+
       // Enhanced approval tracking at submission level
       overallStatus: "pending", // pending, manager_approved, approved, rejected
       managerApprovalStatus: null,
       financeApprovalStatus: null,
-      
+
       submissionHistory: [
         {
           submittedAt: currentDate,
           action: "initial_submission",
           totalAmount: totalAmount,
-          expenseCount: expenses.length
-        }
-      ]
+          expenseCount: expenses.length,
+        },
+      ],
     };
-
-    console.log(
-      "About to insert bulk submission with",
-      expenses.length,
-      "expenses"
-    );
 
     const result = await db
       .collection("expense-tracker")
@@ -269,18 +264,43 @@ const submitBulkExpenses = async (req, res) => {
 };
 
 // Update/Edit expense (for employees to edit their pending/rejected expenses)
+// Updated updateExpense function in travelExpense.js
+
 const updateExpense = async (req, res) => {
   try {
+    console.log("=== UPDATE EXPENSE DEBUG ===");
+    console.log("Request body:", req.body);
+    console.log(
+      "Request file:",
+      req.file
+        ? {
+            originalname: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+            hasBuffer: !!req.file.buffer,
+            bufferLength: req.file.buffer?.length,
+            fieldname: req.file.fieldname,
+          }
+        : "No file received"
+    );
+
     const db = await getDb();
     const user = req.user;
     const expenseId = req.params.id;
     const { amount, description, travelStartDate, travelEndDate, expenseType } =
       req.body;
 
+    // Validation
+    if (!amount || !description || !travelStartDate || !travelEndDate) {
+      return res.status(400).json({
+        error: "Missing required fields",
+      });
+    }
+
     if (new Date(travelStartDate) > new Date(travelEndDate)) {
-      return res
-        .status(400)
-        .json({ error: "Travel start date cannot be after end date" });
+      return res.status(400).json({
+        error: "Travel start date cannot be after end date",
+      });
     }
 
     let query = { "expenses._id": expenseId };
@@ -296,6 +316,7 @@ const updateExpense = async (req, res) => {
       .findOne(query);
 
     if (!bulkSubmission) {
+      console.log("Bulk submission not found");
       return res.status(404).json({ error: "Expense not found" });
     }
 
@@ -305,10 +326,11 @@ const updateExpense = async (req, res) => {
     );
 
     if (!expense) {
+      console.log("Expense not found in bulk submission");
       return res.status(404).json({ error: "Expense not found" });
     }
 
-    // Check if expense can be edited (only pending or rejected)
+    // Check if expense can be edited
     if (!["pending", "rejected"].includes(expense.status)) {
       return res.status(400).json({
         error: "Only pending or rejected expenses can be edited",
@@ -316,7 +338,7 @@ const updateExpense = async (req, res) => {
     }
 
     const currentDate = new Date().toISOString();
-    
+
     // Store previous values for edit history
     const previousValues = {
       expenseType: expense.expenseType,
@@ -325,6 +347,7 @@ const updateExpense = async (req, res) => {
       travelStartDate: expense.travelStartDate,
       travelEndDate: expense.travelEndDate,
       fileName: expense.fileName,
+      hasFile: !!expense.fileName,
     };
 
     // Prepare update data
@@ -338,15 +361,56 @@ const updateExpense = async (req, res) => {
       "expenses.$.editedAt": currentDate,
     };
 
-    // Handle file update if new file uploaded
+    let fileUploaded = false;
+    let newFileName = null;
+
+    // Handle file update - now using req.file from singleUpload.single('file')
     if (req.file) {
-      updateData["expenses.$.fileName"] = req.file.originalname;
-      updateData["expenses.$.fileType"] = req.file.mimetype;
-      updateData["expenses.$.fileSize"] = req.file.size;
-      updateData["expenses.$.fileData"] = req.file.buffer.toString("base64");
+      try {
+        // Validate file size and type
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        const allowedTypes = [
+          "image/jpeg",
+          "image/png",
+          "image/jpg",
+          "application/pdf",
+        ];
+
+        if (req.file.size > maxSize) {
+          return res.status(400).json({
+            error: "File size must be less than 10MB",
+          });
+        }
+
+        if (!allowedTypes.includes(req.file.mimetype)) {
+          return res.status(400).json({
+            error: "Only JPEG, PNG, and PDF files are allowed",
+          });
+        }
+
+        // Convert buffer to base64
+        const base64Data = req.file.buffer.toString("base64");
+
+        // Update file fields
+        updateData["expenses.$.fileName"] = req.file.originalname;
+        updateData["expenses.$.fileType"] = req.file.mimetype;
+        updateData["expenses.$.fileSize"] = req.file.size;
+        updateData["expenses.$.fileData"] = base64Data;
+
+        fileUploaded = true;
+        newFileName = req.file.originalname;
+      } catch (fileError) {
+        console.error("Error processing file:", fileError);
+        return res.status(500).json({
+          error: "Failed to process uploaded file",
+          details: fileError.message,
+        });
+      }
+    } else {
+      console.log("No file uploaded - keeping existing file if any");
     }
 
-    // If expense was rejected, reset all approvals and status to pending
+    // Reset approvals if expense was rejected
     const wasRejected = expense.status === "rejected";
     if (wasRejected) {
       updateData["expenses.$.status"] = "pending";
@@ -354,14 +418,14 @@ const updateExpense = async (req, res) => {
       updateData["expenses.$.reviewedAt"] = null;
       updateData["expenses.$.reviewedBy"] = null;
       updateData["expenses.$.reviewedByName"] = null;
-      
-      // Reset approval tracking
+
+      // Reset enhanced approval tracking
       updateData["expenses.$.managerApproval.status"] = null;
       updateData["expenses.$.managerApproval.reviewedBy"] = null;
       updateData["expenses.$.managerApproval.reviewedByName"] = null;
       updateData["expenses.$.managerApproval.reviewedAt"] = null;
       updateData["expenses.$.managerApproval.comments"] = null;
-      
+
       updateData["expenses.$.financeApproval.status"] = null;
       updateData["expenses.$.financeApproval.reviewedBy"] = null;
       updateData["expenses.$.financeApproval.reviewedByName"] = null;
@@ -369,7 +433,7 @@ const updateExpense = async (req, res) => {
       updateData["expenses.$.financeApproval.comments"] = null;
     }
 
-    // Add to edit history
+    // Create edit history entry
     const editHistoryEntry = {
       editDate: currentDate,
       editedBy: user.userId,
@@ -381,27 +445,38 @@ const updateExpense = async (req, res) => {
         description: description,
         travelStartDate: travelStartDate,
         travelEndDate: travelEndDate,
-        fileName: req.file ? req.file.originalname : expense.fileName,
+        fileName: newFileName || expense.fileName,
+        hasFile: !!(newFileName || expense.fileName),
+        fileUploaded: fileUploaded,
       },
       wasRejected: wasRejected,
-      reason: wasRejected ? "Resubmitted after rejection" : "Modified expense"
+      reason: wasRejected ? "Resubmitted after rejection" : "Modified expense",
+      fileAction: fileUploaded ? "file_uploaded" : "no_file_change",
     };
 
-    // Update the expense
-    const result = await db
-      .collection("expense-tracker")
-      .updateOne(query, { 
-        $set: updateData,
-        $push: { "expenses.$.editHistory": editHistoryEntry }
-      });
+    // Update the expense in the database
+    const result = await db.collection("expense-tracker").updateOne(query, {
+      $set: updateData,
+      $push: { "expenses.$.editHistory": editHistoryEntry },
+    });
 
-    // Update bulk submission with resubmission tracking
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: "Expense not found for update" });
+    }
+
+    if (result.modifiedCount === 0) {
+      console.log(
+        "Warning: No documents were modified (data might be identical)"
+      );
+    }
+
+    // Update bulk submission metadata
     const bulkUpdateData = {
       isResubmitted: true,
       resubmittedAt: currentDate,
     };
 
-    // Reset submission-level approval status if any expense was edited
+    // Reset submission-level approval status if expense was rejected
     if (wasRejected) {
       bulkUpdateData.overallStatus = "pending";
       bulkUpdateData.managerApprovalStatus = null;
@@ -415,43 +490,65 @@ const updateExpense = async (req, res) => {
       modifiedExpenseId: expenseId,
       modifiedBy: user.userId,
       modifiedByName: user.name,
+      fileUploaded: fileUploaded,
+      changes: {
+        fieldsChanged: Object.keys(updateData).filter(
+          (key) => !key.includes("editHistory")
+        ),
+        fileAction: fileUploaded ? "uploaded" : "unchanged",
+      },
     };
 
-    await db
-      .collection("expense-tracker")
-      .updateOne(
-        { _id: bulkSubmission._id },
-        { 
-          $set: bulkUpdateData,
-          $inc: { resubmissionCount: 1 },
-          $push: { submissionHistory: submissionHistoryEntry }
-        }
-      );
+    // Update bulk submission
+    await db.collection("expense-tracker").updateOne(
+      { _id: bulkSubmission._id },
+      {
+        $set: bulkUpdateData,
+        $inc: { resubmissionCount: 1 },
+        $push: { submissionHistory: submissionHistoryEntry },
+      }
+    );
 
-    // Recalculate total amount of the bulk submission
+    // Recalculate total amount for the bulk submission
     const updatedBulkSubmission = await db
       .collection("expense-tracker")
       .findOne({ _id: bulkSubmission._id });
 
-    const newTotalAmount = updatedBulkSubmission.expenses.reduce(
-      (sum, exp) => sum + parseFloat(exp.amount),
-      0
-    );
-
-    await db
-      .collection("expense-tracker")
-      .updateOne(
-        { _id: bulkSubmission._id },
-        { $set: { totalAmount: newTotalAmount } }
+    if (updatedBulkSubmission) {
+      const newTotalAmount = updatedBulkSubmission.expenses.reduce(
+        (sum, exp) => sum + parseFloat(exp.amount || 0),
+        0
       );
 
+      await db
+        .collection("expense-tracker")
+        .updateOne(
+          { _id: bulkSubmission._id },
+          { $set: { totalAmount: newTotalAmount } }
+        );
+    }
+
+    // Send success response
     res.json({
       success: true,
       message: "Expense updated successfully!",
+      data: {
+        expenseId: expenseId,
+        fileUploaded: fileUploaded,
+        newFileName: newFileName,
+        wasRejected: wasRejected,
+        statusReset: wasRejected,
+        editHistory: editHistoryEntry,
+      },
     });
   } catch (error) {
     console.error("Update expense error:", error);
-    res.status(500).json({ error: error.message });
+    console.error("Error stack:", error.stack);
+    res.status(500).json({
+      error: "Failed to update expense. Please try again.",
+      details: error.message,
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+    });
   }
 };
 
@@ -465,7 +562,11 @@ const getExpenses = async (req, res) => {
     let query = {};
 
     // Employees can only see their own expenses
-    if (user.role !== "admin" && user.role !== "manager" && user.role !== "finance") {
+    if (
+      user.role !== "admin" &&
+      user.role !== "manager" &&
+      user.role !== "finance"
+    ) {
       query.employeeId = user.userId;
     }
 
@@ -483,11 +584,13 @@ const getExpenses = async (req, res) => {
     // Filter expenses within each submission by status
     if (status !== "all") {
       bulkSubmissions = bulkSubmissions
-        .map(submission => ({
+        .map((submission) => ({
           ...submission,
-          expenses: submission.expenses.filter(expense => expense.status === status)
+          expenses: submission.expenses.filter(
+            (expense) => expense.status === status
+          ),
         }))
-        .filter(submission => submission.expenses.length > 0);
+        .filter((submission) => submission.expenses.length > 0);
     }
 
     const total = await db.collection("expense-tracker").countDocuments(query);
@@ -509,20 +612,10 @@ const getExpenses = async (req, res) => {
 const getExpensesForAdmin = async (req, res) => {
   try {
     const db = await getDb();
-    const { status = "all", page = 1, limit = 50 } = req.query;
+    const { status = "all", page = 1, limit = 50, includeStats = "false" } = req.query;
     const user = req.user;
 
     let query = {};
-    let expenseStatusFilter = {};
-
-    // Filter based on status and user role
-    if (status !== "all") {
-      if (status === "manager_approved") {
-        expenseStatusFilter = { status: "manager_approved" };
-      } else {
-        expenseStatusFilter = { status: status };
-      }
-    }
 
     // Get all bulk submissions for admin/manager/finance
     let bulkSubmissions = await db
@@ -535,46 +628,63 @@ const getExpensesForAdmin = async (req, res) => {
       .limit(parseInt(limit))
       .toArray();
 
+    // Ensure all submissions have valid expenses arrays
+    bulkSubmissions = bulkSubmissions.map(submission => ({
+      ...submission,
+      expenses: Array.isArray(submission.expenses) ? submission.expenses : []
+    }));
+
     // Filter expenses within each submission by status
     if (status !== "all") {
       bulkSubmissions = bulkSubmissions
-        .map(submission => ({
+        .map((submission) => ({
           ...submission,
-          expenses: submission.expenses.filter(expense => {
+          expenses: submission.expenses.filter((expense) => {
+            if (!expense || typeof expense.status !== 'string') {
+              console.warn('Invalid expense found:', expense);
+              return false;
+            }
+            
             if (status === "manager_approved") {
               return expense.status === "manager_approved";
             }
             return expense.status === status;
-          })
+          }),
         }))
-        .filter(submission => submission.expenses.length > 0);
+        .filter((submission) => submission.expenses.length > 0);
     }
 
-    // Calculate enhanced stats for admin/manager/finance
-    const allBulkSubmissions = await db
-      .collection("expense-tracker")
-      .find({}, { projection: { "expenses.fileData": 0 } })
-      .toArray();
+    let stats = null;
 
-    const allExpenses = allBulkSubmissions.flatMap(
-      (submission) => submission.expenses
-    );
+    // Only calculate stats when explicitly requested (initial load)
+    if (includeStats === "true") {
+      const allBulkSubmissions = await db
+        .collection("expense-tracker")
+        .find({}, { projection: { "expenses.fileData": 0 } })
+        .toArray();
 
-    const stats = {
-      totalCount: allExpenses.length,
-      pendingCount: allExpenses.filter((exp) => exp.status === "pending").length,
-      managerApprovedCount: allExpenses.filter((exp) => exp.status === "manager_approved").length,
-      approvedCount: allExpenses.filter((exp) => exp.status === "approved").length,
-      rejectedCount: allExpenses.filter((exp) => exp.status === "rejected").length,
-      totalSubmissions: allBulkSubmissions.length,
-      resubmittedSubmissions: allBulkSubmissions.filter(sub => sub.isResubmitted).length,
-    };
+      // Fixed stats calculation with defensive programming
+      const allExpenses = allBulkSubmissions
+        .filter(submission => submission && Array.isArray(submission.expenses))
+        .flatMap(submission => submission.expenses)
+        .filter(expense => expense && typeof expense.status === 'string');
+
+      stats = {
+        totalCount: allExpenses.length,
+        pendingCount: allExpenses.filter((exp) => exp.status === "pending").length,
+        managerApprovedCount: allExpenses.filter((exp) => exp.status === "manager_approved").length,
+        approvedCount: allExpenses.filter((exp) => exp.status === "approved").length,
+        rejectedCount: allExpenses.filter((exp) => exp.status === "rejected").length,
+        totalSubmissions: allBulkSubmissions.length,
+        resubmittedSubmissions: allBulkSubmissions.filter((sub) => sub && sub.isResubmitted).length,
+      };
+    }
 
     const total = await db.collection("expense-tracker").countDocuments(query);
 
     res.json({
       success: true,
-      bulkSubmissions, // This matches admin.js expectation
+      bulkSubmissions,
       stats,
       total,
       page: parseInt(page),
@@ -582,7 +692,11 @@ const getExpensesForAdmin = async (req, res) => {
     });
   } catch (error) {
     console.error("Get admin expenses error:", error);
-    res.status(500).json({ error: error.message });
+    console.error("Error stack:", error.stack);
+    res.status(500).json({ 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 
@@ -596,7 +710,9 @@ const managerReviewExpense = async (req, res) => {
 
     // Ensure user is manager
     if (user.role !== "manager") {
-      return res.status(403).json({ error: "Only managers can perform this action" });
+      return res
+        .status(403)
+        .json({ error: "Only managers can perform this action" });
     }
 
     if (!["approved", "rejected"].includes(action)) {
@@ -619,15 +735,19 @@ const managerReviewExpense = async (req, res) => {
     }
 
     // Find the specific expense
-    const expense = bulkSubmission.expenses.find(exp => exp._id === expenseId);
-    
+    const expense = bulkSubmission.expenses.find(
+      (exp) => exp._id === expenseId
+    );
+
     if (!expense) {
       return res.status(404).json({ error: "Expense not found" });
     }
 
     // Check if expense is in pending status
     if (expense.status !== "pending") {
-      return res.status(400).json({ error: "Can only review pending expenses" });
+      return res
+        .status(400)
+        .json({ error: "Can only review pending expenses" });
     }
 
     const currentDate = new Date().toISOString();
@@ -648,7 +768,7 @@ const managerReviewExpense = async (req, res) => {
       "expenses.$.managerApproval.reviewedByName": user.name,
       "expenses.$.managerApproval.reviewedAt": currentDate,
       "expenses.$.managerApproval.comments": comments || null,
-      
+
       // Update legacy fields for backward compatibility
       "expenses.$.reviewedAt": currentDate,
       "expenses.$.reviewedBy": user.userId,
@@ -670,14 +790,12 @@ const managerReviewExpense = async (req, res) => {
       comments: comments || null,
     };
 
-    await db
-      .collection("expense-tracker")
-      .updateOne(
-        { _id: bulkSubmission._id },
-        { 
-          $push: { submissionHistory: submissionHistoryEntry }
-        }
-      );
+    await db.collection("expense-tracker").updateOne(
+      { _id: bulkSubmission._id },
+      {
+        $push: { submissionHistory: submissionHistoryEntry },
+      }
+    );
 
     res.json({
       success: true,
@@ -699,7 +817,9 @@ const financeReviewExpense = async (req, res) => {
 
     // Ensure user is finance
     if (user.role !== "finance") {
-      return res.status(403).json({ error: "Only finance team can perform this action" });
+      return res
+        .status(403)
+        .json({ error: "Only finance team can perform this action" });
     }
 
     if (!["approved", "rejected"].includes(action)) {
@@ -722,15 +842,19 @@ const financeReviewExpense = async (req, res) => {
     }
 
     // Find the specific expense
-    const expense = bulkSubmission.expenses.find(exp => exp._id === expenseId);
-    
+    const expense = bulkSubmission.expenses.find(
+      (exp) => exp._id === expenseId
+    );
+
     if (!expense) {
       return res.status(404).json({ error: "Expense not found" });
     }
 
     // Check if expense is manager approved
     if (expense.status !== "manager_approved") {
-      return res.status(400).json({ error: "Can only review manager-approved expenses" });
+      return res
+        .status(400)
+        .json({ error: "Can only review manager-approved expenses" });
     }
 
     const currentDate = new Date().toISOString();
@@ -751,7 +875,7 @@ const financeReviewExpense = async (req, res) => {
       "expenses.$.financeApproval.reviewedByName": user.name,
       "expenses.$.financeApproval.reviewedAt": currentDate,
       "expenses.$.financeApproval.comments": comments || null,
-      
+
       // Update legacy fields
       "expenses.$.reviewedAt": currentDate,
       "expenses.$.reviewedBy": user.userId,
@@ -773,14 +897,12 @@ const financeReviewExpense = async (req, res) => {
       comments: comments || null,
     };
 
-    await db
-      .collection("expense-tracker")
-      .updateOne(
-        { _id: bulkSubmission._id },
-        { 
-          $push: { submissionHistory: submissionHistoryEntry }
-        }
-      );
+    await db.collection("expense-tracker").updateOne(
+      { _id: bulkSubmission._id },
+      {
+        $push: { submissionHistory: submissionHistoryEntry },
+      }
+    );
 
     res.json({
       success: true,
@@ -802,7 +924,9 @@ const managerBulkReview = async (req, res) => {
 
     // Ensure user is manager
     if (user.role !== "manager") {
-      return res.status(403).json({ error: "Only managers can perform this action" });
+      return res
+        .status(403)
+        .json({ error: "Only managers can perform this action" });
     }
 
     if (!["approved", "rejected"].includes(action)) {
@@ -823,13 +947,18 @@ const managerBulkReview = async (req, res) => {
     }
 
     // Check if all expenses are pending
-    const allPending = bulkSubmission.expenses.every(exp => exp.status === "pending");
+    const allPending = bulkSubmission.expenses.every(
+      (exp) => exp.status === "pending"
+    );
     if (!allPending) {
-      return res.status(400).json({ error: "Can only bulk review submissions where all expenses are pending" });
+      return res.status(400).json({
+        error:
+          "Can only bulk review submissions where all expenses are pending",
+      });
     }
 
     const currentDate = new Date().toISOString();
-    
+
     // Determine new status based on manager action
     let newStatus;
     if (action === "approved") {
@@ -839,11 +968,11 @@ const managerBulkReview = async (req, res) => {
     }
 
     // Update all expenses in the submission
-    const bulkUpdatePromises = bulkSubmission.expenses.map(expense => {
+    const bulkUpdatePromises = bulkSubmission.expenses.map((expense) => {
       return db.collection("expense-tracker").updateOne(
-        { 
+        {
           _id: submissionId,
-          "expenses._id": expense._id 
+          "expenses._id": expense._id,
         },
         {
           $set: {
@@ -853,13 +982,13 @@ const managerBulkReview = async (req, res) => {
             "expenses.$.managerApproval.reviewedByName": user.name,
             "expenses.$.managerApproval.reviewedAt": currentDate,
             "expenses.$.managerApproval.comments": comments || null,
-            
+
             // Update legacy fields
             "expenses.$.reviewedAt": currentDate,
             "expenses.$.reviewedBy": user.userId,
             "expenses.$.reviewedByName": user.name,
             "expenses.$.comments": comments || null,
-          }
+          },
         }
       );
     });
@@ -876,18 +1005,17 @@ const managerBulkReview = async (req, res) => {
       expenseCount: bulkSubmission.expenses.length,
     };
 
-    await db
-      .collection("expense-tracker")
-      .updateOne(
-        { _id: submissionId },
-        { 
-          $set: {
-            managerApprovalStatus: action,
-            overallStatus: newStatus === "manager_approved" ? "manager_approved" : "rejected"
-          },
-          $push: { submissionHistory: submissionHistoryEntry }
-        }
-      );
+    await db.collection("expense-tracker").updateOne(
+      { _id: submissionId },
+      {
+        $set: {
+          managerApprovalStatus: action,
+          overallStatus:
+            newStatus === "manager_approved" ? "manager_approved" : "rejected",
+        },
+        $push: { submissionHistory: submissionHistoryEntry },
+      }
+    );
 
     res.json({
       success: true,
@@ -909,7 +1037,9 @@ const financeBulkReview = async (req, res) => {
 
     // Ensure user is finance
     if (user.role !== "finance") {
-      return res.status(403).json({ error: "Only finance team can perform this action" });
+      return res
+        .status(403)
+        .json({ error: "Only finance team can perform this action" });
     }
 
     if (!["approved", "rejected"].includes(action)) {
@@ -930,13 +1060,18 @@ const financeBulkReview = async (req, res) => {
     }
 
     // Check if all expenses are manager approved
-    const allManagerApproved = bulkSubmission.expenses.every(exp => exp.status === "manager_approved");
+    const allManagerApproved = bulkSubmission.expenses.every(
+      (exp) => exp.status === "manager_approved"
+    );
     if (!allManagerApproved) {
-      return res.status(400).json({ error: "Can only bulk review submissions where all expenses are manager-approved" });
+      return res.status(400).json({
+        error:
+          "Can only bulk review submissions where all expenses are manager-approved",
+      });
     }
 
     const currentDate = new Date().toISOString();
-    
+
     // Determine new status based on finance action
     let newStatus;
     if (action === "approved") {
@@ -946,11 +1081,11 @@ const financeBulkReview = async (req, res) => {
     }
 
     // Update all expenses in the submission
-    const bulkUpdatePromises = bulkSubmission.expenses.map(expense => {
+    const bulkUpdatePromises = bulkSubmission.expenses.map((expense) => {
       return db.collection("expense-tracker").updateOne(
-        { 
+        {
           _id: submissionId,
-          "expenses._id": expense._id 
+          "expenses._id": expense._id,
         },
         {
           $set: {
@@ -960,13 +1095,13 @@ const financeBulkReview = async (req, res) => {
             "expenses.$.financeApproval.reviewedByName": user.name,
             "expenses.$.financeApproval.reviewedAt": currentDate,
             "expenses.$.financeApproval.comments": comments || null,
-            
+
             // Update legacy fields
             "expenses.$.reviewedAt": currentDate,
             "expenses.$.reviewedBy": user.userId,
             "expenses.$.reviewedByName": user.name,
             "expenses.$.comments": comments || null,
-          }
+          },
         }
       );
     });
@@ -983,18 +1118,16 @@ const financeBulkReview = async (req, res) => {
       expenseCount: bulkSubmission.expenses.length,
     };
 
-    await db
-      .collection("expense-tracker")
-      .updateOne(
-        { _id: submissionId },
-        { 
-          $set: {
-            financeApprovalStatus: action,
-            overallStatus: newStatus
-          },
-          $push: { submissionHistory: submissionHistoryEntry }
-        }
-      );
+    await db.collection("expense-tracker").updateOne(
+      { _id: submissionId },
+      {
+        $set: {
+          financeApprovalStatus: action,
+          overallStatus: newStatus,
+        },
+        $push: { submissionHistory: submissionHistoryEntry },
+      }
+    );
 
     res.json({
       success: true,
@@ -1058,14 +1191,12 @@ const updateExpenseStatus = async (req, res) => {
       comments: comments || null,
     };
 
-    await db
-      .collection("expense-tracker")
-      .updateOne(
-        { _id: bulkSubmission._id },
-        { 
-          $push: { submissionHistory: submissionHistoryEntry }
-        }
-      );
+    await db.collection("expense-tracker").updateOne(
+      { _id: bulkSubmission._id },
+      {
+        $push: { submissionHistory: submissionHistoryEntry },
+      }
+    );
 
     res.json({
       success: true,
@@ -1085,7 +1216,7 @@ module.exports = {
   getExpenseFile,
   updateExpenseStatus, // Legacy function
   updateExpense,
-  
+
   // New multi-level approval functions
   managerReviewExpense,
   financeReviewExpense,

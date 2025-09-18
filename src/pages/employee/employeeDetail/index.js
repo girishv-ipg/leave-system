@@ -127,6 +127,9 @@ const EmployeeList = () => {
           <Typography>
             <b>Designation:</b> {employee?.designation}
           </Typography>
+            <Typography>
+            <b>Date of Joining:</b> {employee?.joiningDate}
+          </Typography>
           <Typography>
             <b>Leave Taken:</b>{" "}
             {Number(employee?.totalLeaveQuota) - Number(employee?.leaveBalance)}

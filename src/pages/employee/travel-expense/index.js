@@ -2,8 +2,6 @@
 
 import {
   Add,
-  AttachMoney,
-  CalendarToday,
   Cancel,
   CheckCircle,
   CloudUpload,
@@ -12,12 +10,13 @@ import {
   Edit,
   ExpandLess,
   ExpandMore,
+  FilePresent,
   Home,
   Logout,
-  Person,
   Receipt,
   Schedule,
   TrendingUp,
+  Visibility,
 } from "@mui/icons-material";
 import {
   Alert,
@@ -33,7 +32,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Fade,
   FormControl,
   Grid,
   IconButton,
@@ -54,6 +52,8 @@ import {
 } from "@mui/material";
 import React, { useEffect, useState } from "react";
 
+import { AccountBalance } from "@mui/icons-material";
+import { SupervisorAccount } from "@mui/icons-material";
 import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
 
@@ -76,7 +76,6 @@ export default function ExpenseIndex() {
 
   const router = useRouter();
 
-  // Fetch expenses from API
   useEffect(() => {
     fetchExpenses();
   }, []);
@@ -92,9 +91,7 @@ export default function ExpenseIndex() {
       }
 
       const response = await axiosInstance.get("/expenses", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (response.data.success) {
@@ -111,34 +108,15 @@ export default function ExpenseIndex() {
   };
 
   const getStatusColor = (status) => {
-    switch (status) {
-      case "approved":
-        return "success";
-      case "rejected":
-        return "error";
-      case "pending":
-        return "warning";
-      case "manager_approved":
-        return "info";
-      default:
-        return "default";
-    }
+    const colors = {
+      approved: "success",
+      rejected: "error",
+      pending: "warning",
+      manager_approved: "info",
+    };
+    return colors[status] || "default";
   };
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case "approved":
-        return <CheckCircle />;
-      case "rejected":
-        return <Cancel />;
-      case "pending":
-        return <Schedule />;
-      case "manager_approved":
-        return <Schedule />;
-      default:
-        return <Schedule />;
-    }
-  };
 
   const getSubmissionStatus = (expenses) => {
     const statuses = expenses.map((exp) => exp.status);
@@ -162,15 +140,9 @@ export default function ExpenseIndex() {
     );
     return allExpenses.reduce(
       (acc, expense) => {
-        acc.total += parseFloat(expense.amount) || 0;
-        if (expense.status === "approved")
-          acc.approved += parseFloat(expense.amount) || 0;
-        if (expense.status === "pending")
-          acc.pending += parseFloat(expense.amount) || 0;
-        if (expense.status === "rejected")
-          acc.rejected += parseFloat(expense.amount) || 0;
-        if (expense.status === "manager_approved")
-          acc.manager_approved += parseFloat(expense.amount) || 0;
+        const amount = parseFloat(expense.amount) || 0;
+        acc.total += amount;
+        acc[expense.status] = (acc[expense.status] || 0) + amount;
         return acc;
       },
       { total: 0, approved: 0, pending: 0, rejected: 0, manager_approved: 0 }
@@ -184,9 +156,7 @@ export default function ExpenseIndex() {
   };
 
   const handleEditExpense = (expense) => {
-    console.log("Expense => ", expense);
     setSelectedExpense(expense);
-    // Fix: Properly set the expense type in edit form
     setEditFormData({
       expenseType: expense.expenseType || "",
       amount: expense.amount.toString(),
@@ -199,15 +169,55 @@ export default function ExpenseIndex() {
   };
 
   const handleFormChange = (field, value) => {
-    setEditFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setEditFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
+    if (!file) {
+      setNewFile(null);
+      return;
+    }
+
+    // File validation
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/jpg",
+      "application/pdf",
+    ];
+
+    if (file.size > maxSize) {
+      alert("File size must be less than 10MB");
+      event.target.value = "";
+      return;
+    }
+
+    if (!allowedTypes.includes(file.type)) {
+      alert("Only JPEG, PNG, and PDF files are allowed");
+      event.target.value = "";
+      return;
+    }
+
     setNewFile(file);
+  };
+
+  const clearFile = () => {
+    setNewFile(null);
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  };
+
+  const getFileIcon = (fileName) => {
+    const extension = fileName?.split(".").pop()?.toLowerCase();
+    return extension === "pdf" ? <Description /> : <FilePresent />;
   };
 
   const handleSaveExpense = async () => {
@@ -215,15 +225,11 @@ export default function ExpenseIndex() {
       setEditLoading(true);
       const token = localStorage.getItem("token");
 
-      // Create FormData for the update
       const formData = new FormData();
-      formData.append("expenseType", editFormData.expenseType);
-      formData.append("amount", editFormData.amount);
-      formData.append("description", editFormData.description);
-      formData.append("travelStartDate", editFormData.travelStartDate);
-      formData.append("travelEndDate", editFormData.travelEndDate);
+      Object.entries(editFormData).forEach(([key, value]) => {
+        formData.append(key, value);
+      });
 
-      // Add new file if selected
       if (newFile) {
         formData.append("file", newFile);
       }
@@ -231,20 +237,12 @@ export default function ExpenseIndex() {
       const response = await axiosInstance.put(
         `/expenses/${selectedExpense._id}`,
         formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data",
-          },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       if (response.data.success) {
-        setEditDialogOpen(false);
-        setSelectedExpense(null);
-        setNewFile(null);
-        fetchExpenses(); // Refresh the list
-        // Show success message (you can add a snackbar here)
+        handleCloseEditDialog();
+        fetchExpenses();
       } else {
         setError("Failed to update expense");
       }
@@ -277,7 +275,6 @@ export default function ExpenseIndex() {
       });
 
       const expense = response.data;
-      console.log("respnse of expense => ", expense);
       if (expense.fileData) {
         const byteCharacters = atob(expense.fileData);
         const byteNumbers = new Array(byteCharacters.length);
@@ -298,11 +295,6 @@ export default function ExpenseIndex() {
     }
   };
 
-  const handleNewExpense = () => {
-    // Navigation to new expense page
-    router.push("/employee/travel-expense/upload");
-  };
-
   const isFormValid = () => {
     return (
       editFormData.expenseType &&
@@ -316,7 +308,6 @@ export default function ExpenseIndex() {
     );
   };
 
-  // Show loading spinner
   if (loading) {
     return (
       <Box
@@ -333,7 +324,6 @@ export default function ExpenseIndex() {
     );
   }
 
-  // Show error state
   if (error) {
     return (
       <Box sx={{ minHeight: "100vh", backgroundColor: "#fafbfc", p: 2 }}>
@@ -349,15 +339,43 @@ export default function ExpenseIndex() {
 
   const totals = calculateTotals();
 
-  const handleHome = () => {
-    router.push("/main");
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-    router.push("/login");
-  };
+  const summaryStats = [
+    {
+      label: "Total",
+      value: totals.total,
+      icon: TrendingUp,
+      color: "#0969da",
+      bg: "linear-gradient(135deg, #dbeafe 0%, #f0f9ff 100%)",
+    },
+    {
+      label: "Approved",
+      value: totals.approved,
+      icon: CheckCircle,
+      color: "#1a7f37",
+      bg: "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
+    },
+    {
+      label: "Manager Approved",
+      value: totals.manager_approved || 0,
+      icon: Schedule,
+      color: "#0ea5e9",
+      bg: "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
+    },
+    {
+      label: "Pending",
+      value: totals.pending,
+      icon: Schedule,
+      color: "#bf8700",
+      bg: "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
+    },
+    {
+      label: "Rejected",
+      value: totals.rejected,
+      icon: Cancel,
+      color: "#cf222e",
+      bg: "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
+    },
+  ];
 
   return (
     <Box sx={{ minHeight: "100vh", backgroundColor: "#fafbfc" }}>
@@ -398,18 +416,27 @@ export default function ExpenseIndex() {
                 </Typography>
               </Box>
             </Box>
-
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <IconButton sx={{ color: "primary.light" }} onClick={handleHome}>
+              <IconButton
+                sx={{ color: "primary.light" }}
+                onClick={() => router.push("/main")}
+              >
                 <Home />
               </IconButton>
-              <IconButton sx={{ color: "error.main" }} onClick={handleLogout}>
+              <IconButton
+                sx={{ color: "error.main" }}
+                onClick={() => {
+                  localStorage.removeItem("user");
+                  localStorage.removeItem("token");
+                  router.push("/login");
+                }}
+              >
                 <Logout />
               </IconButton>
               <Button
                 variant="contained"
                 startIcon={<Add />}
-                onClick={handleNewExpense}
+                onClick={() => router.push("/employee/travel-expense/upload")}
                 sx={{ borderRadius: "8px", fontWeight: 600 }}
               >
                 New Expense
@@ -420,62 +447,20 @@ export default function ExpenseIndex() {
       </Box>
 
       <Box sx={{ maxWidth: 1200, mx: "auto", px: 2, pb: 3 }}>
-        {/* Enhanced Summary Cards with Gradients */}
+        {/* Summary Cards */}
         <Grid container spacing={2} sx={{ mt: 2, mb: 3 }}>
-          {[
-            {
-              label: "Total",
-              value: totals.total,
-              icon: TrendingUp,
-              color: "#0969da",
-              bg: "linear-gradient(135deg, #dbeafe 0%, #f0f9ff 100%)",
-              border: "#0969da",
-            },
-            {
-              label: "Approved",
-              value: totals.approved,
-              icon: CheckCircle,
-              color: "#1a7f37",
-              bg: "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
-              border: "#1a7f37",
-            },
-            {
-              label: "Manager Approved",
-              value: totals.manager_approved || 0,
-              icon: Schedule,
-              color: "#0ea5e9",
-              bg: "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
-              border: "#0ea5e9",
-            },
-            {
-              label: "Pending",
-              value: totals.pending,
-              icon: Schedule,
-              color: "#bf8700",
-              bg: "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
-              border: "#bf8700",
-            },
-            {
-              label: "Rejected",
-              value: totals.rejected,
-              icon: Cancel,
-              color: "#cf222e",
-              bg: "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
-              border: "#cf222e",
-            },
-          ].map((stat, index) => (
+          {summaryStats.map((stat, index) => (
             <Grid item xs={6} sm={2.4} key={index}>
               <Card
-                elevation={0}
+                elevation={1}
                 sx={{
                   borderRadius: "8px",
                   background: stat.bg,
-                  border: `1px solid ${stat.border}20`,
+                  border: `1px solid ${stat.color}20`,
                   transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
                   "&:hover": {
                     transform: "translateY(-2px)",
-                    boxShadow: `0 12px 24px ${stat.border}15`,
-                    borderColor: `${stat.border}40`,
+                    boxShadow: `0 12px 24px ${stat.color}15`,
                   },
                 }}
               >
@@ -522,10 +507,10 @@ export default function ExpenseIndex() {
           ))}
         </Grid>
 
-        {/* No data state */}
+        {/* Expense Submissions */}
         {bulkSubmissions.length === 0 ? (
           <Card
-            elevation={0}
+            elevation={1}
             sx={{
               borderRadius: "8px",
               border: "1px solid #e1e4e8",
@@ -544,7 +529,7 @@ export default function ExpenseIndex() {
               <Button
                 variant="contained"
                 startIcon={<Add />}
-                onClick={handleNewExpense}
+                onClick={() => router.push("/employee/travel-expense/upload")}
                 sx={{ borderRadius: "8px", fontWeight: 600 }}
               >
                 Create First Expense
@@ -552,7 +537,6 @@ export default function ExpenseIndex() {
             </CardContent>
           </Card>
         ) : (
-          /* Expense Submissions */
           <Grid container spacing={2}>
             {bulkSubmissions.map((submission) => {
               const submissionStatus = getSubmissionStatus(submission.expenses);
@@ -562,120 +546,142 @@ export default function ExpenseIndex() {
               return (
                 <Grid item xs={12} key={submission._id}>
                   <Card
-                    elevation={0}
+                    elevation={1}
                     sx={{
-                      borderRadius: "8px",
                       border: "1px solid #e1e4e8",
                       "&:hover": { boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)" },
                     }}
                   >
-                    {/* Main Card Header */}
                     <CardContent
                       sx={{ p: 2, cursor: "pointer" }}
                       onClick={() => toggleExpanded(submission._id)}
                     >
                       <Box sx={{ display: "flex", alignItems: "center" }}>
-                        <Avatar
-                          sx={{
-                            width: 32,
-                            height: 32,
-                            bgcolor: `${getStatusColor(submissionStatus)}.main`,
-                            mr: 2,
-                          }}
-                        >
-                          {getStatusIcon(submissionStatus)}
-                        </Avatar>
-
                         <Box sx={{ flexGrow: 1 }}>
+                          <Typography
+                            variant="h6"
+                            fontWeight={600}
+                            sx={{
+                              fontWeight: 700,
+                              color: "red",
+                              fontSize: "1.5rem",
+                              lineHeight: 1,
+                              fontWeight: 800,
+                              mb: 2,
+                              color:
+                                submissionStatus === "approved"
+                                  ? "#1a7f37"
+                                  : submissionStatus === "rejected"
+                                  ? "#cf222e"
+                                  : submissionStatus === "manager_approved"
+                                  ? "#37bdfbff"
+                                  : submissionStatus === "pending"
+                                  ? "#bf8700"
+                                  : "#1e293b",
+                              fontFamily: '"SF Mono", "Monaco", monospace',
+                            }}
+                          >
+                            ₹{submission.totalAmount?.toLocaleString()}
+                          </Typography>
                           <Box
                             sx={{
                               display: "flex",
                               alignItems: "center",
                               gap: 1,
-                              mb: 0.5,
+                              my: 1,
                             }}
                           >
-                            <Typography variant="h6" fontWeight={600}>
-                              ₹{submission.totalAmount?.toLocaleString()}
-                            </Typography>
-                            {/* Enhanced Resubmitted Chip */}
-                            {submission.isResubmitted &&
-                              submission.resubmissionCount > 0 && (
-                                <Chip
-                                  label="Resubmitted"
-                                  size="small"
+                              <Box
                                   sx={{
-                                    fontWeight: 600,
-                                    background:
-                                      "linear-gradient(135deg, #e6e0feff 0%, #f3f0ffff 100%)",
-                                    color: "#950ee9ff",
-                                    border: "1px solid #3d0ee940",
-                                    borderRadius: "6px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 1,
+                                    flexWrap: "wrap",
                                   }}
-                                />
-                              )}
-                            {/* Enhanced Status Chips */}
-                            {statusCounts.approved && (
-                              <Chip
-                                label={`${statusCounts.approved} Approved`}
-                                size="small"
-                                sx={{
-                                  background:
-                                    "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
-                                  color: "#1a7f37",
-                                  border: "1px solid #1a7f3720",
-                                  borderRadius: "6px",
-                                  fontWeight: 600,
-                                }}
-                              />
-                            )}
-                            {statusCounts.manager_approved && (
-                              <Chip
-                                label={`${statusCounts.manager_approved} Manager Approved`}
-                                size="small"
-                                sx={{
-                                  background:
-                                    "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
-                                  color: "#0ea5e9",
-                                  border: "1px solid #0ea5e920",
-                                  borderRadius: "6px",
-                                  fontWeight: 600,
-                                }}
-                              />
-                            )}
-                            {statusCounts.pending && (
-                              <Chip
-                                label={`${statusCounts.pending} Pending`}
-                                size="small"
-                                sx={{
-                                  background:
-                                    "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
-                                  color: "#bf8700",
-                                  border: "1px solid #bf870020",
-                                  borderRadius: "6px",
-                                  fontWeight: 600,
-                                }}
-                              />
-                            )}
-                            {statusCounts.rejected && (
-                              <Chip
-                                label={`${statusCounts.rejected} Rejected`}
-                                size="small"
-                                sx={{
-                                  background:
-                                    "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
-                                  color: "#cf222e",
-                                  border: "1px solid #cf222e20",
-                                  borderRadius: "6px",
-                                  fontWeight: 600,
-                                }}
-                              />
-                            )}
+                                >
+                                  {/* Primary Status */}
+                                  {submissionStatus === "approved" && (
+                                    <Chip
+                                      label={`${statusCounts.approved} Approved`}
+                                      size="small"
+                                      sx={{
+                                        background:
+                                          "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
+                                        color: "#1a7f37",
+                                        border: "1px solid #1a7f3720",
+                                        borderRadius: "20px",
+                                        fontWeight: 600,
+                                      }}
+                                    />
+                                  )}
+                                  {submissionStatus === "manager_approved" && (
+                                    <Chip
+                                      label="Manager Approved"
+                                      size="small"
+                                      sx={{
+                                        background:
+                                          "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
+                                        color: "#0ea5e9",
+                                        border: "1px solid #0ea5e920",
+                                        borderRadius: "20px",
+                                        fontWeight: 600,
+                                        fontSize: "0.7rem",
+                                      }}
+                                    />
+                                  )}
+                                  {submission.overallStatus === "pending" && (
+                                    <Chip
+                                      label={`${statusCounts.pending} Pending`}
+                                      size="small"
+                                      sx={{
+                                        background:
+                                          "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
+                                        color: "#bf8700",
+                                        border: "1px solid #bf870020",
+                                        borderRadius: "20px",
+                                        fontWeight: 600,
+                                        fontSize: "0.7rem",
+                                      }}
+                                    />
+                                  )}
+                                  {submissionStatus === "rejected" && (
+                                    <Chip
+                                      label={`${statusCounts.rejected} Rejected`}
+                                      size="small"
+                                      sx={{
+                                        background:
+                                          "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
+                                        color: "#cf222e",
+                                        border: "1px solid #cf222e20",
+                                        borderRadius: "20px",
+                                        fontWeight: 600,
+                                        fontSize: "0.7rem",
+                                      }}
+                                    />
+                                  )}
+
+                                  {/* Resubmitted - Subtle */}
+                                  {submission.isResubmitted &&
+                                    submission.resubmissionCount > 0 && (
+                                      <Chip
+                                        label="Resubmitted"
+                                        size="small"
+                                        sx={{
+                                          backgroundColor:
+                                            "rgba(100, 116, 139, 0.1)",
+                                          color: "#64748b",
+                                          border:
+                                            "1px solid rgba(100, 116, 139, 0.2)",
+                                          fontWeight: 500,
+                                          fontSize: "0.7rem",
+                                        }}
+                                      />
+                                    )}
+                                </Box>
                           </Box>
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant="body2" color="text.secondary" sx={{ fontFamily:'"SF Mono", "Monaco", monospace'}}>
                             {submission.expenses.length} expenses •{" "}
-                            {submission.isResubmitted &&
-                            submission.resubmissionCount > 0
+                            {submission.isResubmitted
                               ? `Resubmitted: ${new Date(
                                   submission.resubmittedAt ||
                                     submission.submittedAt
@@ -685,14 +691,12 @@ export default function ExpenseIndex() {
                                 ).toLocaleString()}`}
                           </Typography>
                         </Box>
-
                         <IconButton>
                           {isExpanded ? <ExpandLess /> : <ExpandMore />}
                         </IconButton>
                       </Box>
                     </CardContent>
 
-                    {/* Expanded Details */}
                     <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                       <Box sx={{ borderTop: "1px solid #e1e4e8", p: 2 }}>
                         <TableContainer
@@ -703,24 +707,21 @@ export default function ExpenseIndex() {
                           <Table size="small">
                             <TableHead>
                               <TableRow sx={{ bgcolor: "grey.50" }}>
-                                <TableCell sx={{ fontWeight: 600 }}>
-                                  Type
-                                </TableCell>
-                                <TableCell sx={{ fontWeight: 600 }}>
-                                  Amount
-                                </TableCell>
-                                <TableCell sx={{ fontWeight: 600 }}>
-                                  Description
-                                </TableCell>
-                                <TableCell sx={{ fontWeight: 600 }}>
-                                  Period
-                                </TableCell>
-                                <TableCell sx={{ fontWeight: 600 }}>
-                                  Status
-                                </TableCell>
-                                <TableCell sx={{ fontWeight: 600 }}>
-                                  Actions
-                                </TableCell>
+                                {[
+                                  "Type",
+                                  "Amount",
+                                  "Description",
+                                  "Period",
+                                  "Status",
+                                  "Actions",
+                                ].map((header) => (
+                                  <TableCell
+                                    key={header}
+                                    sx={{ fontWeight: 600 }}
+                                  >
+                                    {header}
+                                  </TableCell>
+                                ))}
                               </TableRow>
                             </TableHead>
                             <TableBody>
@@ -773,73 +774,133 @@ export default function ExpenseIndex() {
                                     </Typography>
                                   </TableCell>
                                   <TableCell>
-                                    <Box>
-                                      <Chip
-                                        label={expense.status.toUpperCase()}
-                                        color={getStatusColor(expense.status)}
-                                        size="small"
-                                        sx={{
-                                          fontWeight: 600,
-                                          borderRadius: "6px",
-                                        }}
-                                      />
-                                      {/* Enhanced Edit/Resubmit indicators */}
-                                      {(expense.isResubmitted ||
-                                        expense.isEdited) && (
-                                        <Box sx={{ mt: 1 }}>
-                                          {expense.isResubmitted && (
+                                        <Box>
+                                          {/* Primary Status */}
+                                          {expense.status === "approved" && (
                                             <Chip
-                                              label="Resubmitted"
-                                              size="small"
-                                              sx={{
-                                                mr: 0.5,
-                                                background:
-                                                  "linear-gradient(135deg, #e6e0feff 0%, #f3f0ffff 100%)",
-                                                color: "#950ee9ff",
-                                                borderRadius: "6px",
-                                                fontWeight: 600,
-                                              }}
-                                            />
-                                          )}
-                                          {expense.isEdited && (
-                                            <Chip
-                                              label="Edited"
+                                              label={"Approved"}
                                               size="small"
                                               sx={{
                                                 background:
-                                                  "linear-gradient(135deg, #fed7aa 0%, #fef3c7 100%)",
-                                                color: "#ea580c",
-                                                borderRadius: "6px",
+                                                  "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
+                                                color: "#1a7f37",
+                                                border: "1px solid #1a7f3720",
+                                                borderRadius: "20px",
                                                 fontWeight: 600,
+                                                mb: 1,
                                               }}
                                             />
                                           )}
+
+                                          {expense.status === "pending" && (
+                                            <Chip
+                                              label={"Pending"}
+                                              size="small"
+                                              sx={{
+                                                background:
+                                                  "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
+                                                color: "#bf8700",
+                                                border: "1px solid #bf870020",
+                                                borderRadius: "20px",
+                                                fontWeight: 600,
+                                                mb: 1,
+                                                fontSize: "0.7rem",
+                                              }}
+                                            />
+                                          )}
+                                          {expense.status === "rejected" && (
+                                            <Chip
+                                              label={"Rejected"}
+                                              size="small"
+                                              sx={{
+                                                background:
+                                                  "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
+                                                color: "#cf222e",
+                                                border: "1px solid #cf222e20",
+                                                borderRadius: "20px",
+                                                fontWeight: 600,
+                                                mb: 1,
+                                              }}
+                                            />
+                                          )}
+
+                                          {/* Minimal Additional Status Info */}
+                                          <Box
+                                            sx={{
+                                              display: "flex",
+                                              flexWrap: "wrap",
+                                              gap: 0.5,
+                                            }}
+                                          >
+                                            {expense.managerApproval?.status ===
+                                              "approved" && (
+                                              <Chip
+                                                icon={<SupervisorAccount />}
+                                                label="Manager ✓"
+                                                size="small"
+                                                sx={{
+                                                  backgroundColor:
+                                                    "rgba(59, 130, 246, 0.1)",
+                                                  color: "#3b82f6",
+                                                  fontWeight: 500,
+                                                  fontSize: "0.6875rem",
+                                                }}
+                                              />
+                                            )}
+                                            {expense.financeApproval?.status ===
+                                              "approved" && (
+                                              <Chip
+                                                icon={<AccountBalance />}
+                                                label="Finance ✓"
+                                                size="small"
+                                                sx={{
+                                                  backgroundColor:
+                                                    "rgba(16, 185, 129, 0.1)",
+                                                  color: "#10b981",
+                                                  fontWeight: 500,
+                                                  fontSize: "0.6875rem",
+                                                }}
+                                              />
+                                            )}
+
+                                            {/* Subtle Edit indicators */}
+                                            {expense.isEdited && (
+                                              <Chip
+                                                label="Edited"
+                                                size="small"
+                                                sx={{
+                                                  backgroundColor:
+                                                    "rgba(245, 158, 11, 0.1)",
+                                                  color: "#f59e0b",
+                                                  fontWeight: 500,
+                                                  fontSize: "0.6875rem",
+                                                }}
+                                              />
+                                            )}
+                                          </Box>
+
+                                          {/* Rejection comments */}
+                                          {expense.comments &&
+                                            expense.status === "rejected" && (
+                                              <Tooltip title={expense.comments}>
+                                                <Typography
+                                                  variant="caption"
+                                                  color="error"
+                                                  display="block"
+                                                  sx={{
+                                                    mt: 0.5,
+                                                    cursor: "pointer",
+                                                  }}
+                                                >
+                                                  View reason
+                                                </Typography>
+                                              </Tooltip>
+                                            )}
                                         </Box>
-                                      )}
-                                      {expense.comments &&
-                                        expense.status === "rejected" && (
-                                          <Tooltip title={expense.comments}>
-                                            <Typography
-                                              variant="caption"
-                                              color="error"
-                                              display="block"
-                                              sx={{
-                                                mt: 0.5,
-                                                cursor: "pointer",
-                                              }}
-                                            >
-                                              View reason
-                                            </Typography>
-                                          </Tooltip>
-                                        )}
-                                    </Box>
                                   </TableCell>
                                   <TableCell>
                                     <Box sx={{ display: "flex", gap: 0.5 }}>
-                                      {/* Check for both current expense files and new file uploads */}
-                                      {(expense.fileName ||
-                                        (selectedExpense?._id === expense._id &&
-                                          newFile)) && (
+                                      {expense.fileName && (
                                         <Tooltip title="View Receipt">
                                           <IconButton
                                             size="small"
@@ -849,11 +910,10 @@ export default function ExpenseIndex() {
                                             }}
                                             sx={{ color: "info.main" }}
                                           >
-                                            <Receipt fontSize="small" />
+                                            <Visibility fontSize="small" />
                                           </IconButton>
                                         </Tooltip>
                                       )}
-
                                       {(expense.status === "pending" ||
                                         expense.status === "rejected") && (
                                         <Tooltip title="Edit Expense">
@@ -885,15 +945,13 @@ export default function ExpenseIndex() {
           </Grid>
         )}
 
-        {/* Enhanced Edit Expense Dialog */}
+        {/* Edit Dialog */}
         <Dialog
           open={editDialogOpen}
           onClose={handleCloseEditDialog}
           maxWidth="md"
           fullWidth
-          PaperProps={{
-            sx: { borderRadius: "12px" },
-          }}
+          PaperProps={{ sx: { borderRadius: "12px" } }}
         >
           {selectedExpense && (
             <>
@@ -901,10 +959,10 @@ export default function ExpenseIndex() {
                 <Box sx={{ display: "flex", alignItems: "center" }}>
                   <Avatar
                     sx={{
-                      width: 32,
-                      height: 32,
                       bgcolor: `${getStatusColor(selectedExpense.status)}.main`,
                       mr: 2,
+                      fontWeight: 600,
+                      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.16)",
                     }}
                   >
                     <Edit />
@@ -918,9 +976,8 @@ export default function ExpenseIndex() {
                 </Box>
               </DialogTitle>
 
-              <DialogContent sx={{ pt: 3 }}>
+              <DialogContent sx={{ pt: "20px !important" }}>
                 <Grid container spacing={3}>
-                  {/* Expense Type */}
                   <Grid item xs={12} sm={6}>
                     <FormControl fullWidth>
                       <InputLabel>Expense Type</InputLabel>
@@ -931,20 +988,24 @@ export default function ExpenseIndex() {
                           handleFormChange("expenseType", e.target.value)
                         }
                       >
-                        <MenuItem value="travel">Travel</MenuItem>
-                        <MenuItem value="accommodation">Accommodation</MenuItem>
-                        <MenuItem value="meals">Meals</MenuItem>
-                        <MenuItem value="transport">Transport</MenuItem>
-                        <MenuItem value="office_supplies">
-                          Office Supplies
-                        </MenuItem>
-                        <MenuItem value="training">Training</MenuItem>
-                        <MenuItem value="other">Other</MenuItem>
+                        {[
+                          "travel",
+                          "accommodation",
+                          "meals",
+                          "transport",
+                          "office_supplies",
+                          "training",
+                          "other",
+                        ].map((type) => (
+                          <MenuItem key={type} value={type}>
+                            {type
+                              .replace("_", " ")
+                              .replace(/\b\w/g, (l) => l.toUpperCase())}
+                          </MenuItem>
+                        ))}
                       </Select>
                     </FormControl>
                   </Grid>
-
-                  {/* Amount */}
                   <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
@@ -957,8 +1018,6 @@ export default function ExpenseIndex() {
                       inputProps={{ min: 0, step: 0.01 }}
                     />
                   </Grid>
-
-                  {/* Description */}
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
@@ -972,8 +1031,6 @@ export default function ExpenseIndex() {
                       placeholder="Enter expense description..."
                     />
                   </Grid>
-
-                  {/* Travel Dates */}
                   <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
@@ -986,7 +1043,6 @@ export default function ExpenseIndex() {
                       InputLabelProps={{ shrink: true }}
                     />
                   </Grid>
-
                   <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
@@ -1000,113 +1056,162 @@ export default function ExpenseIndex() {
                     />
                   </Grid>
 
-                  {/* Current File Info */}
-                  {(selectedExpense.fileName || newFile) && (
+                  {/* Current File Display */}
+                  {selectedExpense.fileName && !newFile && (
                     <Grid item xs={12}>
-                      <Box
-                        sx={{
-                          p: 2,
-                          bgcolor: "grey.50",
-                          borderRadius: 1,
-                          border: "1px solid #e1e4e8",
-                        }}
+                      <Card
+                        sx={{ bgcolor: "grey.50", border: "1px solid #e1e4e8" }}
                       >
-                        <Typography variant="subtitle2" gutterBottom>
-                          {newFile ? "New Receipt Selected" : "Current Receipt"}
-                        </Typography>
-                        <Box
-                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
-                        >
-                          <Receipt sx={{ color: "primary.main" }} />
-                          <Typography variant="body2">
-                            {newFile ? newFile.name : selectedExpense.fileName}
-                          </Typography>
-                          {!newFile && selectedExpense.fileName && (
+                        <CardContent sx={{ p: 2 }}>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 2,
+                            }}
+                          >
+                            <Avatar
+                              sx={{
+                                bgcolor: "primary.main",
+                                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.16)",
+                              }}
+                            >
+                              {getFileIcon(selectedExpense.fileName)}
+                            </Avatar>
+                            <Box sx={{ flexGrow: 1 }}>
+                              <Typography
+                                variant="subtitle2"
+                                color="text.secondary"
+                              >
+                                Current Receipt
+                              </Typography>
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  fontWeight: 550,
+                                  textTransform: "uppercase",
+                                }}
+                              >
+                                {selectedExpense.fileName}
+                              </Typography>
+                            </Box>
                             <Button
+                              variant="outlined"
                               size="small"
                               onClick={() =>
                                 handleViewDocument(selectedExpense._id)
                               }
                             >
-                              View Current
+                              View
                             </Button>
-                          )}
-                        </Box>
-                      </Box>
+                          </Box>
+                        </CardContent>
+                      </Card>
                     </Grid>
                   )}
 
                   {/* File Upload */}
                   <Grid item xs={12}>
-                    <Box
+                    <Card
+                      elevation={newFile ? 1 : 0}
                       sx={{
-                        p: 2,
-                        border: "2px dashed #e1e4e8",
-                        borderRadius: 1,
+                        border: newFile ? "none" : "2px dashed #cbd5e1",
+                        bgcolor: newFile ? "#f0fdf4" : "#fafbfc",
                       }}
                     >
-                      <Stack spacing={2} alignItems="center">
-                        <CloudUpload
-                          sx={{ fontSize: 40, color: "text.secondary" }}
-                        />
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          textAlign="center"
-                        >
-                          {selectedExpense.fileName || newFile
-                            ? "Upload new receipt (optional)"
-                            : "Upload receipt (optional)"}
-                        </Typography>
-                        <Button
-                          component="label"
-                          variant="outlined"
-                          startIcon={<CloudUpload />}
-                        >
-                          Choose File
-                          <input
-                            hidden
-                            accept="image/*,.pdf"
-                            type="file"
-                            onChange={handleFileChange}
-                          />
-                        </Button>
-                        {newFile && (
+                      <CardContent sx={{ p: 3 }}>
+                        {!newFile ? (
+                          <Box sx={{ textAlign: "center" }}>
+                            <CloudUpload
+                              sx={{
+                                fontSize: 48,
+                                color: "text.secondary",
+                                mb: 2,
+                              }}
+                            />
+                            <Typography variant="h6" sx={{ mb: 1 }}>
+                              {selectedExpense.fileName
+                                ? "Upload New Receipt"
+                                : "Upload Receipt"}
+                            </Typography>
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{ mb: 2 }}
+                            >
+                              Choose a file to upload (JPEG, PNG, PDF • Max
+                              10MB)
+                            </Typography>
+                            <Button
+                              component="label"
+                              variant="outlined"
+                              startIcon={<CloudUpload />}
+                            >
+                              Choose File
+                              <input
+                                hidden
+                                accept="image/jpeg,image/jpg,image/png,application/pdf"
+                                type="file"
+                                onChange={handleFileChange}
+                              />
+                            </Button>
+                          </Box>
+                        ) : (
                           <Box
                             sx={{
                               display: "flex",
                               alignItems: "center",
-                              gap: 1,
+                              gap: 2,
                             }}
                           >
-                            <Typography variant="body2" color="success.main">
-                              New file: {newFile.name}
-                            </Typography>
-                            <IconButton
+                            <Avatar sx={{ bgcolor: "#22c55e", color: "white" }}>
+                              {getFileIcon(newFile.name)}
+                            </Avatar>
+                            <Box sx={{ flexGrow: 1 }}>
+                              <Typography
+                                variant="subtitle1"
+                                color="#22c55e"
+                                fontWeight={600}
+                              >
+                                {newFile.name}
+                              </Typography>
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                {formatFileSize(newFile.size)}
+                              </Typography>
+                            </Box>
+                            <Button
+                              component="label"
+                              variant="outlined"
                               size="small"
-                              onClick={() => setNewFile(null)}
                             >
-                              <Delete fontSize="small" />
+                              Change
+                              <input
+                                hidden
+                                accept="image/jpeg,image/jpg,image/png,application/pdf"
+                                type="file"
+                                onChange={handleFileChange}
+                              />
+                            </Button>
+                            <IconButton
+                              onClick={clearFile}
+                              sx={{ color: "error.main" }}
+                            >
+                              <Delete />
                             </IconButton>
                           </Box>
                         )}
-                      </Stack>
-                    </Box>
+                      </CardContent>
+                    </Card>
                   </Grid>
 
-                  {/* Comments for rejected expenses */}
+                  {/* Rejection Comments */}
                   {selectedExpense.comments &&
                     selectedExpense.status === "rejected" && (
                       <Grid item xs={12}>
-                        <Alert
-                          severity="error"
-                          sx={{
-                            borderRadius: "8px",
-                            border: "1px solid #fee2e2",
-                            background:
-                              "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
-                          }}
-                        >
+                        <Alert severity="error">
                           <Typography variant="subtitle2" gutterBottom>
                             Rejection Reason:
                           </Typography>
@@ -1120,11 +1225,7 @@ export default function ExpenseIndex() {
               </DialogContent>
 
               <DialogActions sx={{ p: 3, pt: 1 }}>
-                <Button
-                  onClick={handleCloseEditDialog}
-                  disabled={editLoading}
-                  sx={{ borderRadius: "8px" }}
-                >
+                <Button onClick={handleCloseEditDialog} disabled={editLoading}>
                   Cancel
                 </Button>
                 <Button
@@ -1134,7 +1235,6 @@ export default function ExpenseIndex() {
                   startIcon={
                     editLoading ? <CircularProgress size={16} /> : <Edit />
                   }
-                  sx={{ borderRadius: "8px" }}
                 >
                   {editLoading ? "Saving..." : "Save Changes"}
                 </Button>

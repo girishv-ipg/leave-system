@@ -244,7 +244,7 @@ export default function BulkExpenseEntry() {
             Authorization: `Bearer ${token}`,
             "Content-Type": "multipart/form-data",
           },
-          timeout: 30000,
+          timeout: 30000 // 30 seconds timeout
         }
       );
 
@@ -304,6 +304,7 @@ export default function BulkExpenseEntry() {
 
     try {
       const token = localStorage.getItem("token");
+      const user = JSON.parse(localStorage.getItem("user"));
 
       if (!token) {
         setError("Authentication required. Please login again.");
@@ -375,7 +376,11 @@ export default function BulkExpenseEntry() {
 
         // Redirect to index page after 2 seconds
         setTimeout(() => {
-          router.push("/employee/travel-expense");
+          if (user.role === "employee") {
+            router.push("/employee/travel-expense");
+          } else {
+            router.push("/admin/travel-expense/expense");
+          }
         }, 2000);
       } else {
         setError(result.error || "Failed to submit expenses");

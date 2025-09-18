@@ -250,6 +250,7 @@ const RegisterEmployee = () => {
                 <MenuItem value="admin">Admin</MenuItem>
                 <MenuItem value="manager">Manager</MenuItem>
                 <MenuItem value="hr">HR</MenuItem>
+                <MenuItem value="finance">Finance Team</MenuItem>
               </Select>
               {!form.role && <FormHelperText>Role is required</FormHelperText>}
             </FormControl>
@@ -265,6 +266,7 @@ const RegisterEmployee = () => {
                 <MenuItem value="engineering">Engineering</MenuItem>
                 <MenuItem value="sales">Sales</MenuItem>
                 <MenuItem value="hr">HR</MenuItem>
+                  <MenuItem value="finance">Finance</MenuItem>
               </Select>
             </FormControl>
 
