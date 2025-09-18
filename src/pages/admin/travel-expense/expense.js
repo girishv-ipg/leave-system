@@ -1516,7 +1516,7 @@ export default function AdminExpenses() {
                                   p: 2,
                                 }}
                               >
-                                {currentUser?.role === "manager" ? (
+                                {currentUser?.role === "manager" && (
                                   // Manager sees gradient APPROVE/REJECT buttons
                                   <>
                                     <Button
@@ -1593,85 +1593,6 @@ export default function AdminExpenses() {
                                       REJECT ALL
                                     </Button>
                                   </>
-                                ) : currentUser?.role === "finance" ? (
-                                  // Finance sees APPROVE/REJECT buttons for manager-approved items
-                                  <>
-                                    <Button
-                                      variant="contained"
-                                      size="small"
-                                      startIcon={<AccountBalance />}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActionDialog({
-                                          open: true,
-                                          expense: null,
-                                          submission,
-                                          action: "approved",
-                                          type: "bulk",
-                                        });
-                                      }}
-                                      sx={{
-                                        borderRadius: "8px",
-                                        fontWeight: 600,
-                                        px: 1,
-                                        textTransform: "none",
-                                        fontSize: "0.8rem",
-                                        background:
-                                          "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
-                                        color: "#1a7f37",
-                                        border: "1px solid #1a7f3750",
-                                        boxShadow: "none",
-                                        "&:hover": {
-                                          transform: "translateY(-1px)",
-                                          boxShadow:
-                                            "0 4px 12px rgba(26, 127, 55, 0.3)",
-                                          background:
-                                            "linear-gradient(135deg, #bbf7d0 0%, #dcfce7 100%)",
-                                        },
-                                        transition: "all 0.2s ease",
-                                      }}
-                                    >
-                                      FINANCE APPROVE
-                                    </Button>
-                                    <Button
-                                      variant="outlined"
-                                      size="small"
-                                      startIcon={<Cancel />}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActionDialog({
-                                          open: true,
-                                          expense: null,
-                                          submission,
-                                          action: "rejected",
-                                          type: "bulk",
-                                        });
-                                      }}
-                                      sx={{
-                                        borderRadius: "8px",
-                                        fontWeight: 600,
-                                        px: 1,
-                                        textTransform: "none",
-                                        fontSize: "0.8rem",
-                                        background:
-                                          "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
-                                        color: "#cf222e",
-                                        border: "1px solid #cf222e50",
-                                        "&:hover": {
-                                          transform: "translateY(-1px)",
-                                          boxShadow:
-                                            "0 4px 12px rgba(207, 34, 46, 0.3)",
-                                          background:
-                                            "linear-gradient(135deg, #fecaca 0%, #fee2e2 100%)",
-                                        },
-                                        transition: "all 0.2s ease",
-                                      }}
-                                    >
-                                      REJECT ALL
-                                    </Button>
-                                  </>
-                                ) : (
-                                  <></>
                                 )}
                               </Box>
                             )}
