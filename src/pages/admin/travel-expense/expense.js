@@ -7,22 +7,18 @@ import {
   Assessment,
   Cancel,
   CheckCircle,
-  Comment,
-  Description,
   Edit,
   ExpandLess,
   ExpandMore,
   Home,
   Logout,
   PendingActions,
-  Person,
   Receipt,
+  RequestQuote,
   Schedule,
   SupervisorAccount,
   ThumbDown,
   ThumbUp,
-  TrendingUp,
-  VerifiedUser,
   Visibility,
 } from "@mui/icons-material";
 import {
@@ -642,7 +638,7 @@ export default function AdminExpenses() {
                   currentUser?.role === "finance"
                     ? totalForFinance
                     : totals.total,
-                icon: TrendingUp,
+                icon: RequestQuote ,
                 color: "#0969da",
                 bg: "linear-gradient(135deg, #dbeafe 0%, #f0f9ff 100%)",
                 border: "#0969da",
