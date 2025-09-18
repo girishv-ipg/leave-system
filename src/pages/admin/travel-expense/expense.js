@@ -461,6 +461,10 @@ export default function AdminExpenses() {
 
   const totals = calculateTotals();
 
+  const totalForFinance =
+    totals.approved + totals.rejected + totals.manager_approved;
+  console.log("Total for Finance:", totalForFinance);
+
   return (
     <Box
       sx={{
@@ -475,7 +479,7 @@ export default function AdminExpenses() {
           position: "sticky",
           top: 0,
           zIndex: 1000,
-           backdropFilter: "blur(20px)",
+          backdropFilter: "blur(20px)",
           borderBottom: "1px solid #e2e8f0",
           boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
         }}
@@ -632,34 +636,32 @@ export default function AdminExpenses() {
           <Grid container spacing={2} sx={{ mb: 3 }}>
             {[
               // Show different stats based on user role
-              ...(currentUser?.role === "finance"
+              {
+                label: "Total Expenses",
+                value:
+                  currentUser?.role === "finance"
+                    ? totalForFinance
+                    : totals.total,
+                icon: TrendingUp,
+                color: "#0969da",
+                bg: "linear-gradient(135deg, #dbeafe 0%, #f0f9ff 100%)",
+                border: "#0969da",
+              },
+
+              {
+                label: "Pending Review", // Changed for Finance
+                value:
+                  currentUser?.role === "finance"
+                    ? totals.manager_approved
+                    : totals.pending,
+                icon: Schedule,
+                color: "#bf8700",
+                bg: "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
+                border: "#bf8700",
+              },
+              ...(currentUser?.role === "admin" ||
+              currentUser?.role === "manager"
                 ? [
-                    {
-                      label: "Pending Review", // Changed for Finance
-                      value: totals.manager_approved || 0,
-                      icon: Schedule,
-                      color: "#bf8700",
-                      bg: "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
-                      border: "#bf8700",
-                    },
-                  ]
-                : [
-                    {
-                      label: "Total Expenses",
-                      value: totals.total,
-                      icon: TrendingUp,
-                      color: "#0969da",
-                      bg: "linear-gradient(135deg, #dbeafe 0%, #f0f9ff 100%)",
-                      border: "#0969da",
-                    },
-                    {
-                      label: "Pending Review",
-                      value: totals.pending,
-                      icon: Schedule,
-                      color: "#bf8700",
-                      bg: "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
-                      border: "#bf8700",
-                    },
                     {
                       label: "Manager Approved",
                       value: totals.manager_approved || 0,
@@ -668,7 +670,8 @@ export default function AdminExpenses() {
                       bg: "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
                       border: "#0ea5e9",
                     },
-                  ]),
+                  ]
+                : []),
               {
                 label: "Fully Approved",
                 value: totals.approved,
@@ -689,7 +692,7 @@ export default function AdminExpenses() {
               <Grid
                 item
                 xs={6}
-                sm={currentUser?.role === "finance" ? 3.8 : 2.4}
+                sm={currentUser?.role === "finance" ? 3 : 2.4}
                 key={index}
                 sx={{ mx: "auto" }}
               >
@@ -767,7 +770,7 @@ export default function AdminExpenses() {
             display: "flex",
             flexDirection: "column",
             minHeight: "400px", // Minimum height for small screens
-            maxHeight:  { xs: "70vh", sm: "75vh", md: "80vh", lg: "85vh" } // Responsive max height
+            maxHeight: { xs: "70vh", sm: "75vh", md: "80vh", lg: "85vh" }, // Responsive max height
           }}
         >
           {/* Filter Tabs */}
@@ -778,6 +781,7 @@ export default function AdminExpenses() {
               borderBottom: "1px solid #e1e4e8",
               px: 2,
               flexShrink: 0,
+              transition: "ease-in-out 0.3s",
               "& .MuiTab-root": {
                 minHeight: 60,
                 fontWeight: 600,
