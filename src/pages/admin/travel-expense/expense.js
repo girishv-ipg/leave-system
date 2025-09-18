@@ -67,11 +67,10 @@ export default function AdminExpenses() {
   const [bulkSubmissions, setBulkSubmissions] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("all");
+  const [activeTab, setActiveTab] = useState(""); // Will be set based on user role
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [expandedSubmission, setExpandedSubmission] = useState(null);
-  const [initialLoad, setInitialLoad] = useState(false);
   const [actionDialog, setActionDialog] = useState({
     open: false,
     expense: null,
@@ -86,30 +85,71 @@ export default function AdminExpenses() {
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user"));
     setCurrentUser(user);
+
+    // Set initial tab based on user role
+    if (user?.role === "finance") {
+      setActiveTab("manager_approved"); // Finance users start with "Pending Review" (manager_approved)
+    } else {
+      setActiveTab("all"); // Other users start with "All"
+    }
   }, []);
 
-  const statusTabs = [
-    { value: "all", label: "All", icon: <Assessment />, color: "primary" },
-    {
-      value: "pending",
-      label: "Pending",
-      icon: <Schedule />,
-      color: "warning",
-    },
-    {
-      value: "manager_approved",
-      label: "Manager Approved",
-      icon: <SupervisorAccount />,
-      color: "info",
-    },
-    {
-      value: "approved",
-      label: "Fully Approved",
-      icon: <CheckCircle />,
-      color: "success",
-    },
-    { value: "rejected", label: "Rejected", icon: <Cancel />, color: "error" },
-  ];
+  // Updated status tabs configuration based on user role
+  const getStatusTabs = () => {
+    if (currentUser?.role === "finance") {
+      return [
+        {
+          value: "manager_approved",
+          label: "Pending Review", // Changed from "Manager Approved" to "Pending Review" for Finance
+          icon: <Schedule />,
+          color: "warning",
+        },
+        {
+          value: "approved",
+          label: "Fully Approved",
+          icon: <CheckCircle />,
+          color: "success",
+        },
+        {
+          value: "rejected",
+          label: "Rejected",
+          icon: <Cancel />,
+          color: "error",
+        },
+      ];
+    } else {
+      // Default tabs for admin/manager
+      return [
+        { value: "all", label: "All", icon: <Assessment />, color: "primary" },
+        {
+          value: "pending",
+          label: "Pending",
+          icon: <Schedule />,
+          color: "warning",
+        },
+        {
+          value: "manager_approved",
+          label: "Manager Approved",
+          icon: <SupervisorAccount />,
+          color: "info",
+        },
+        {
+          value: "approved",
+          label: "Fully Approved",
+          icon: <CheckCircle />,
+          color: "success",
+        },
+        {
+          value: "rejected",
+          label: "Rejected",
+          icon: <Cancel />,
+          color: "error",
+        },
+      ];
+    }
+  };
+
+  const statusTabs = getStatusTabs();
 
   const fetchExpenses = async (status = "pending") => {
     setLoading(true);
@@ -121,13 +161,33 @@ export default function AdminExpenses() {
         return;
       }
 
+      // Get filtered data for current tab
       const response = await axiosInstance.get("/admin/expenses", {
         headers: { Authorization: `Bearer ${token}` },
-        params: { status },
+        params: {
+          status,
+          includeStats: "false",
+        },
       });
 
       setBulkSubmissions(response.data.bulkSubmissions || []);
-      setStats(response.data.stats);
+
+      // Only update stats if they're provided in the response
+      if (response.data.stats) {
+        setStats(response.data.stats);
+      }
+
+      // If we don't have all data yet, fetch it for stats calculation
+      if (allExpensesData.length === 0) {
+        const allDataResponse = await axiosInstance.get("/admin/expenses", {
+          headers: { Authorization: `Bearer ${token}` },
+          params: {
+            status: "all",
+            includeStats: "false",
+          },
+        });
+        setAllExpensesData(allDataResponse.data.bulkSubmissions || []);
+      }
     } catch (error) {
       console.error("Error fetching expenses:", error);
       setError(error.response?.data?.error || "Failed to fetch expenses");
@@ -136,34 +196,57 @@ export default function AdminExpenses() {
     }
   };
 
-// Initial load - get stats
-useEffect(() => {
-  const fetchInitialData = async () => {
-     const token = localStorage.getItem("token");
+  // Initial load - get stats and all data
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      const token = localStorage.getItem("token");
       if (!token) {
         setError("Please login first");
         return;
       }
-    const response = await axiosInstance.get("/admin/expenses", {
-      headers: { Authorization: `Bearer ${token}` },
-      params: { 
-        status: "pending", 
-        includeStats: "true"  // Only on first load
-      },
-    });
-    setBulkSubmissions(response.data.bulkSubmissions || []);
-    setStats(response.data.stats);
-  };
-  
-  fetchInitialData();
-}, []);
 
-// Tab changes - no stats
-useEffect(() => {
-  if (activeTab !== "all") { // Skip initial tab since already loaded above
-    fetchExpenses(activeTab);
-  }
-}, [activeTab]);
+      // Set default status based on user role
+      const defaultStatus =
+        currentUser?.role === "finance" ? "manager_approved" : "pending";
+
+      try {
+        // Get filtered data for default tab
+        const response = await axiosInstance.get("/admin/expenses", {
+          headers: { Authorization: `Bearer ${token}` },
+          params: {
+            status: defaultStatus,
+            includeStats: "true", // Get stats on first load
+          },
+        });
+        setBulkSubmissions(response.data.bulkSubmissions || []);
+        setStats(response.data.stats);
+
+        // Get all data for stats calculation
+        const allDataResponse = await axiosInstance.get("/admin/expenses", {
+          headers: { Authorization: `Bearer ${token}` },
+          params: {
+            status: "all",
+            includeStats: "false",
+          },
+        });
+        setAllExpensesData(allDataResponse.data.bulkSubmissions || []);
+      } catch (error) {
+        console.error("Error in initial fetch:", error);
+        setError("Failed to fetch expenses");
+      }
+    };
+
+    if (currentUser) {
+      fetchInitialData();
+    }
+  }, [currentUser]);
+
+  // Tab changes - no stats
+  useEffect(() => {
+    if (activeTab && currentUser) {
+      fetchExpenses(activeTab);
+    }
+  }, [activeTab, currentUser]);
 
   const handleLogout = () => {
     localStorage.removeItem("user");
@@ -206,7 +289,20 @@ useEffect(() => {
         type: "individual",
       });
       setComments("");
+
+      // Refresh both filtered data and all data for stats
       fetchExpenses(activeTab);
+
+      // Refresh all data for stats calculation
+      const allDataResponse = await axiosInstance.get("/admin/expenses", {
+        headers: { Authorization: `Bearer ${token}` },
+        params: {
+          status: "all",
+          includeStats: "false",
+        },
+      });
+      setAllExpensesData(allDataResponse.data.bulkSubmissions || []);
+
       setTimeout(() => setSuccess(""), 3000);
     } catch (error) {
       setError(error.response?.data?.error || error.message);
@@ -240,7 +336,20 @@ useEffect(() => {
         type: "bulk",
       });
       setComments("");
+
+      // Refresh both filtered data and all data for stats
       fetchExpenses(activeTab);
+
+      // Refresh all data for stats calculation
+      const allDataResponse = await axiosInstance.get("/admin/expenses", {
+        headers: { Authorization: `Bearer ${token}` },
+        params: {
+          status: "all",
+          includeStats: "false",
+        },
+      });
+      setAllExpensesData(allDataResponse.data.bulkSubmissions || []);
+
       setTimeout(() => setSuccess(""), 3000);
     } catch (error) {
       setError(error.response?.data?.error || error.message);
@@ -282,6 +391,7 @@ useEffect(() => {
       return "manager_approved";
     return "pending";
   };
+
   const getStatusCounts = (expenses) => {
     return expenses.reduce((acc, exp) => {
       acc[exp.status] = (acc[exp.status] || 0) + 1;
@@ -295,10 +405,14 @@ useEffect(() => {
     );
   };
 
+  // Store all expenses data for stats calculation (independent of current tab filter)
+  const [allExpensesData, setAllExpensesData] = useState([]);
+
   const calculateTotals = () => {
-  const allExpenses = bulkSubmissions.flatMap(
-  (submission) => Array.isArray(submission.expenses) ? submission.expenses : []
-);
+    // Use allExpensesData instead of currently filtered bulkSubmissions
+    const allExpenses = allExpensesData.flatMap((submission) =>
+      Array.isArray(submission.expenses) ? submission.expenses : []
+    );
     return allExpenses.reduce(
       (acc, expense) => {
         acc.total += parseFloat(expense.amount) || 0;
@@ -361,7 +475,7 @@ useEffect(() => {
           position: "sticky",
           top: 0,
           zIndex: 1000,
-          backgroundColor: "white",
+           backdropFilter: "blur(20px)",
           borderBottom: "1px solid #e2e8f0",
           boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
         }}
@@ -403,7 +517,11 @@ useEffect(() => {
                     lineHeight: 1.2,
                   }}
                 >
-                  {currentUser?.role === "finance" ? "Finance" : currentUser?.role === "manager" ? "Manager" : "Admin"}{" "}
+                  {currentUser?.role === "finance"
+                    ? "Finance Executive"
+                    : currentUser?.role === "manager"
+                    ? "Manager"
+                    : "Admin"}{" "}
                   Dashboard
                 </Typography>
                 <Typography variant="body2" sx={{ color: "#64748b", mt: 0.5 }}>
@@ -412,7 +530,7 @@ useEffect(() => {
               </Box>
             </Box>
 
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
               <Chip
                 icon={
                   currentUser?.role === "finance" ? (
@@ -423,6 +541,7 @@ useEffect(() => {
                 }
                 label={currentUser?.role?.toUpperCase()}
                 sx={{
+                  height: 30,
                   backgroundColor:
                     currentUser?.role === "finance"
                       ? "rgba(16, 185, 129, 0.1)"
@@ -439,6 +558,8 @@ useEffect(() => {
                 <IconButton
                   onClick={handleHome}
                   sx={{
+                    height: 33,
+                    width: 33,
                     backgroundColor: "rgba(59, 130, 246, 0.1)",
                     color: "#3b82f6",
                     "&:hover": { backgroundColor: "rgba(59, 130, 246, 0.2)" },
@@ -451,6 +572,8 @@ useEffect(() => {
                 <IconButton
                   onClick={handleCreateExpense}
                   sx={{
+                    height: 33,
+                    width: 33,
                     backgroundColor: "rgba(143, 59, 246, 0.1)",
                     color: "#413bf6ff",
                     "&:hover": { backgroundColor: "rgba(96, 59, 246, 0.2)" },
@@ -461,15 +584,17 @@ useEffect(() => {
               </Tooltip>
               <Tooltip title="Logout">
                 <IconButton
-                onClick={handleLogout}
-                sx={{
-                  backgroundColor: "rgba(239, 68, 68, 0.1)",
-                  color: "#ef4444",
-                  "&:hover": { backgroundColor: "rgba(239, 68, 68, 0.2)" },
-                }}
-              >
-                <Logout />
-              </IconButton>
+                  onClick={handleLogout}
+                  sx={{
+                    height: 33,
+                    width: 33,
+                    backgroundColor: "rgba(239, 68, 68, 0.1)",
+                    color: "#ef4444",
+                    "&:hover": { backgroundColor: "rgba(239, 68, 68, 0.2)" },
+                  }}
+                >
+                  <Logout />
+                </IconButton>
               </Tooltip>
             </Box>
           </Box>
@@ -502,34 +627,48 @@ useEffect(() => {
           </Fade>
         )}
 
-        {/* Original UI Stats Cards with Gradients */}
+        {/* Stats Cards - Updated labels for Finance users */}
         {stats && (
           <Grid container spacing={2} sx={{ mb: 3 }}>
             {[
-              {
-                label: "Total Expenses",
-                value: totals.total,
-                icon: TrendingUp,
-                color: "#0969da",
-                bg: "linear-gradient(135deg, #dbeafe 0%, #f0f9ff 100%)",
-                border: "#0969da",
-              },
-              {
-                label: "Pending Review",
-                value: totals.pending,
-                icon: Schedule,
-                color: "#bf8700",
-                bg: "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
-                border: "#bf8700",
-              },
-              {
-                label: "Manager Approved",
-                value: totals.manager_approved || 0,
-                icon: SupervisorAccount,
-                color: "#0ea5e9",
-                bg: "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
-                border: "#0ea5e9",
-              },
+              // Show different stats based on user role
+              ...(currentUser?.role === "finance"
+                ? [
+                    {
+                      label: "Pending Review", // Changed for Finance
+                      value: totals.manager_approved || 0,
+                      icon: Schedule,
+                      color: "#bf8700",
+                      bg: "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
+                      border: "#bf8700",
+                    },
+                  ]
+                : [
+                    {
+                      label: "Total Expenses",
+                      value: totals.total,
+                      icon: TrendingUp,
+                      color: "#0969da",
+                      bg: "linear-gradient(135deg, #dbeafe 0%, #f0f9ff 100%)",
+                      border: "#0969da",
+                    },
+                    {
+                      label: "Pending Review",
+                      value: totals.pending,
+                      icon: Schedule,
+                      color: "#bf8700",
+                      bg: "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
+                      border: "#bf8700",
+                    },
+                    {
+                      label: "Manager Approved",
+                      value: totals.manager_approved || 0,
+                      icon: SupervisorAccount,
+                      color: "#0ea5e9",
+                      bg: "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
+                      border: "#0ea5e9",
+                    },
+                  ]),
               {
                 label: "Fully Approved",
                 value: totals.approved,
@@ -547,7 +686,13 @@ useEffect(() => {
                 border: "#cf222e",
               },
             ].map((stat, index) => (
-              <Grid item xs={6} sm={2.4} key={index}>
+              <Grid
+                item
+                xs={6}
+                sm={currentUser?.role === "finance" ? 3.8 : 2.4}
+                key={index}
+                sx={{ mx: "auto" }}
+              >
                 <Card
                   elevation={1}
                   sx={{
@@ -621,7 +766,8 @@ useEffect(() => {
             boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
             display: "flex",
             flexDirection: "column",
-            height: "calc(100vh - 360px)",
+            minHeight: "400px", // Minimum height for small screens
+            maxHeight:  { xs: "70vh", sm: "75vh", md: "80vh", lg: "85vh" } // Responsive max height
           }}
         >
           {/* Filter Tabs */}
@@ -695,12 +841,18 @@ useEffect(() => {
                   No expense submissions found
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  No {activeTab === "all" ? "" : activeTab} expense submissions
-                  to display
+                  No{" "}
+                  {activeTab === "all"
+                    ? ""
+                    : activeTab === "manager_approved" &&
+                      currentUser?.role === "finance"
+                    ? "pending review"
+                    : activeTab}{" "}
+                  expense submissions to display
                 </Typography>
               </Box>
             ) : (
-              /* Original Style Submission Cards with Improvements */
+              /* Submission Cards with Manager Approved Chip for Finance */
               <Grid container spacing={2}>
                 {bulkSubmissions.map((submission) => {
                   const submissionStatus = getSubmissionStatus(
@@ -724,7 +876,7 @@ useEffect(() => {
                           },
                         }}
                       >
-                        {/* Improved Card Header with Prominent Amount */}
+                        {/* Card Header with Prominent Amount */}
                         <CardContent
                           sx={{ p: 2, cursor: "pointer" }}
                           onClick={() => toggleExpanded(submission._id)}
@@ -740,7 +892,9 @@ useEffect(() => {
                                   : submissionStatus === "rejected"
                                   ? "#cf222e"
                                   : submissionStatus === "manager_approved"
-                                  ? "#37bdfbff"
+                                  ? currentUser?.role === "finance"
+                                    ? "#bf8700"
+                                    : "#37bdfbff" // Show as pending (orange) for finance
                                   : submissionStatus === "pending"
                                   ? "#bf8700"
                                   : "#1e293b",
@@ -768,25 +922,27 @@ useEffect(() => {
                                     fontSize: "1rem",
                                   }}
                                 >
-                                  {submission.employeeName}
+                                  {submission?.employeeName}
                                 </Typography>
                                 {/* Subtle Employee Code */}
-                                <Typography
-                                  variant="body2"
-                                  sx={{
-                                    color: "#64748b",
-                                    fontFamily:
-                                      '"SF Mono", "Monaco", monospace',
-                                    backgroundColor: "#edf1f5ff",
-                                    px: 1.5,
-                                    py: 0.5,
-                                    borderRadius: "10px",
-                                    fontSize: "0.75rem",
-                                  }}
-                                >
-                                  {submission.employeeCode}
-                                </Typography>
-                                {/* Reduced and Subtle Chips */}
+                                {submission.employeeCode && (
+                                  <Typography
+                                    variant="body2"
+                                    sx={{
+                                      color: "#64748b",
+                                      fontFamily:
+                                        '"SF Mono", "Monaco", monospace',
+                                      backgroundColor: "#edf1f5ff",
+                                      px: 1.5,
+                                      py: 0.5,
+                                      borderRadius: "10px",
+                                      fontSize: "0.75rem",
+                                    }}
+                                  >
+                                    {submission.employeeCode}
+                                  </Typography>
+                                )}
+                                {/* Status Chips - Special handling for Finance users */}
                                 <Box
                                   sx={{
                                     display: "flex",
@@ -807,24 +963,60 @@ useEffect(() => {
                                         border: "1px solid #1a7f3720",
                                         borderRadius: "20px",
                                         fontWeight: 600,
-                                         fontSize: "0.7rem"
+                                        fontSize: "0.7rem",
                                       }}
                                     />
                                   )}
                                   {submissionStatus === "manager_approved" && (
-                                    <Chip
-                                      label="Manager Approved"
-                                      size="small"
-                                      sx={{
-                                        background:
-                                          "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
-                                        color: "#0ea5e9",
-                                        border: "1px solid #0ea5e920",
-                                        borderRadius: "20px",
-                                        fontWeight: 600,
-                                        fontSize: "0.7rem",
-                                      }}
-                                    />
+                                    <>
+                                      {/* For Finance users, show as "Pending Review" but keep the Manager Approved chip visible */}
+                                      {currentUser?.role === "finance" ? (
+                                        <>
+                                          <Chip
+                                            label="Pending Review"
+                                            size="small"
+                                            sx={{
+                                              background:
+                                                "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
+                                              color: "#bf8700",
+                                              border: "1px solid #bf870020",
+                                              borderRadius: "20px",
+                                              fontWeight: 600,
+                                              fontSize: "0.7rem",
+                                            }}
+                                          />
+                                          {/* Show Manager Approved as additional info */}
+                                          <Chip
+                                            icon={<SupervisorAccount />}
+                                            label="Manager ✓"
+                                            size="small"
+                                            sx={{
+                                              backgroundColor:
+                                                "rgba(59, 130, 246, 0.1)",
+                                              color: "#3b82f6",
+                                              border:
+                                                "1px solid rgba(59, 130, 246, 0.2)",
+                                              fontWeight: 500,
+                                              fontSize: "0.7rem",
+                                            }}
+                                          />
+                                        </>
+                                      ) : (
+                                        <Chip
+                                          label="Manager Approved"
+                                          size="small"
+                                          sx={{
+                                            background:
+                                              "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
+                                            color: "#0ea5e9",
+                                            border: "1px solid #0ea5e920",
+                                            borderRadius: "20px",
+                                            fontWeight: 600,
+                                            fontSize: "0.7rem",
+                                          }}
+                                        />
+                                      )}
+                                    </>
                                   )}
                                   {submission.overallStatus === "pending" && (
                                     <Chip
@@ -992,10 +1184,10 @@ useEffect(() => {
                                       </TableCell>
                                       <TableCell noWrap sx={{ minWidth: 200 }}>
                                         <Box>
-                                          {/* Primary Status */}
+                                          {/* Primary Status - Special handling for Finance users */}
                                           {expense.status === "approved" && (
                                             <Chip
-                                              label={`${statusCounts.approved} Approved`}
+                                              label={"Approved"}
                                               size="small"
                                               sx={{
                                                 background:
@@ -1005,14 +1197,14 @@ useEffect(() => {
                                                 borderRadius: "20px",
                                                 fontWeight: 600,
                                                 mb: 1,
-                                                 fontSize: "0.7rem"
+                                                fontSize: "0.7rem",
                                               }}
                                             />
                                           )}
 
                                           {expense.status === "pending" && (
                                             <Chip
-                                              label={`${statusCounts.pending} Pending`}
+                                              label={"Pending"}
                                               size="small"
                                               sx={{
                                                 background:
@@ -1022,13 +1214,54 @@ useEffect(() => {
                                                 borderRadius: "20px",
                                                 fontWeight: 600,
                                                 mb: 1,
-                                                fontSize: "0.7rem"
+                                                fontSize: "0.7rem",
                                               }}
                                             />
                                           )}
+
+                                          {expense.status ===
+                                            "manager_approved" && (
+                                            <>
+                                              {currentUser?.role ===
+                                              "finance" ? (
+                                                <Chip
+                                                  label={"Pending Review"}
+                                                  size="small"
+                                                  sx={{
+                                                    background:
+                                                      "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
+                                                    color: "#bf8700",
+                                                    border:
+                                                      "1px solid #bf870020",
+                                                    borderRadius: "20px",
+                                                    fontWeight: 600,
+                                                    mb: 1,
+                                                    fontSize: "0.7rem",
+                                                  }}
+                                                />
+                                              ) : (
+                                                <Chip
+                                                  label={"Manager Approved"}
+                                                  size="small"
+                                                  sx={{
+                                                    background:
+                                                      "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
+                                                    color: "#0ea5e9",
+                                                    border:
+                                                      "1px solid #0ea5e920",
+                                                    borderRadius: "20px",
+                                                    fontWeight: 600,
+                                                    mb: 1,
+                                                    fontSize: "0.7rem",
+                                                  }}
+                                                />
+                                              )}
+                                            </>
+                                          )}
+
                                           {expense.status === "rejected" && (
                                             <Chip
-                                              label={`${statusCounts.rejected} Rejected`}
+                                              label={"Rejected"}
                                               size="small"
                                               sx={{
                                                 background:
@@ -1042,7 +1275,7 @@ useEffect(() => {
                                             />
                                           )}
 
-                                          {/* Minimal Additional Status Info */}
+                                          {/* Additional Status Info */}
                                           <Box
                                             sx={{
                                               display: "flex",
@@ -1050,21 +1283,45 @@ useEffect(() => {
                                               gap: 0.5,
                                             }}
                                           >
+                                            {/* Always show Manager Approved chip for Finance when status is manager_approved */}
+                                            {expense.status ===
+                                              "manager_approved" &&
+                                              currentUser?.role === "finance" &&
+                                              expense.managerApproval
+                                                ?.status === "approved" && (
+                                                <Chip
+                                                  icon={<SupervisorAccount />}
+                                                  label="Manager ✓"
+                                                  size="small"
+                                                  sx={{
+                                                    backgroundColor:
+                                                      "rgba(59, 130, 246, 0.1)",
+                                                    color: "#3b82f6",
+                                                    fontWeight: 500,
+                                                    fontSize: "0.7rem",
+                                                  }}
+                                                />
+                                              )}
+
+                                            {/* Show Manager approved for other roles */}
                                             {expense.managerApproval?.status ===
-                                              "approved" && (
-                                              <Chip
-                                                icon={<SupervisorAccount />}
-                                                label="Manager ✓"
-                                                size="small"
-                                                sx={{
-                                                  backgroundColor:
-                                                    "rgba(59, 130, 246, 0.1)",
-                                                  color: "#3b82f6",
-                                                  fontWeight: 500,
-                                                  fontSize: "0.7rem",
-                                                }}
-                                              />
-                                            )}
+                                              "approved" &&
+                                              currentUser?.role !==
+                                                "finance" && (
+                                                <Chip
+                                                  icon={<SupervisorAccount />}
+                                                  label="Manager ✓"
+                                                  size="small"
+                                                  sx={{
+                                                    backgroundColor:
+                                                      "rgba(59, 130, 246, 0.1)",
+                                                    color: "#3b82f6",
+                                                    fontWeight: 500,
+                                                    fontSize: "0.7rem",
+                                                  }}
+                                                />
+                                              )}
+
                                             {expense.financeApproval?.status ===
                                               "approved" && (
                                               <Chip
@@ -1245,7 +1502,7 @@ useEffect(() => {
                               </Box>
                             )}
 
-                            {/* Bulk Action Buttons at Bottom for All Roles */}
+                            {/* Bulk Action Buttons at Bottom - Updated for Finance */}
                             {canPerformBulkAction(submission) && (
                               <Box
                                 sx={{
@@ -1332,9 +1589,85 @@ useEffect(() => {
                                       REJECT ALL
                                     </Button>
                                   </>
-                                ) : (
+                                ) : currentUser?.role === "finance" ? (
+                                  // Finance sees APPROVE/REJECT buttons for manager-approved items
                                   <>
+                                    <Button
+                                      variant="contained"
+                                      size="small"
+                                      startIcon={<AccountBalance />}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActionDialog({
+                                          open: true,
+                                          expense: null,
+                                          submission,
+                                          action: "approved",
+                                          type: "bulk",
+                                        });
+                                      }}
+                                      sx={{
+                                        borderRadius: "8px",
+                                        fontWeight: 600,
+                                        px: 1,
+                                        textTransform: "none",
+                                        fontSize: "0.8rem",
+                                        background:
+                                          "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
+                                        color: "#1a7f37",
+                                        border: "1px solid #1a7f3750",
+                                        boxShadow: "none",
+                                        "&:hover": {
+                                          transform: "translateY(-1px)",
+                                          boxShadow:
+                                            "0 4px 12px rgba(26, 127, 55, 0.3)",
+                                          background:
+                                            "linear-gradient(135deg, #bbf7d0 0%, #dcfce7 100%)",
+                                        },
+                                        transition: "all 0.2s ease",
+                                      }}
+                                    >
+                                      FINANCE APPROVE
+                                    </Button>
+                                    <Button
+                                      variant="outlined"
+                                      size="small"
+                                      startIcon={<Cancel />}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActionDialog({
+                                          open: true,
+                                          expense: null,
+                                          submission,
+                                          action: "rejected",
+                                          type: "bulk",
+                                        });
+                                      }}
+                                      sx={{
+                                        borderRadius: "8px",
+                                        fontWeight: 600,
+                                        px: 1,
+                                        textTransform: "none",
+                                        fontSize: "0.8rem",
+                                        background:
+                                          "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
+                                        color: "#cf222e",
+                                        border: "1px solid #cf222e50",
+                                        "&:hover": {
+                                          transform: "translateY(-1px)",
+                                          boxShadow:
+                                            "0 4px 12px rgba(207, 34, 46, 0.3)",
+                                          background:
+                                            "linear-gradient(135deg, #fecaca 0%, #fee2e2 100%)",
+                                        },
+                                        transition: "all 0.2s ease",
+                                      }}
+                                    >
+                                      REJECT ALL
+                                    </Button>
                                   </>
+                                ) : (
+                                  <></>
                                 )}
                               </Box>
                             )}

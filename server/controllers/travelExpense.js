@@ -613,7 +613,6 @@ const getExpensesForAdmin = async (req, res) => {
   try {
     const db = await getDb();
     const { status = "all", page = 1, limit = 50, includeStats = "false" } = req.query;
-    const user = req.user;
 
     let query = {};
 

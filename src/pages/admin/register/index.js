@@ -250,7 +250,7 @@ const RegisterEmployee = () => {
                 <MenuItem value="admin">Admin</MenuItem>
                 <MenuItem value="manager">Manager</MenuItem>
                 <MenuItem value="hr">HR</MenuItem>
-                <MenuItem value="finance">Finance Team</MenuItem>
+                <MenuItem value="finance">Finance Executive</MenuItem>
               </Select>
               {!form.role && <FormHelperText>Role is required</FormHelperText>}
             </FormControl>
