@@ -459,7 +459,6 @@ export default function AdminExpenses() {
 
   const totalForFinance =
     totals.approved + totals.rejected + totals.manager_approved;
-  console.log("Total for Finance:", totalForFinance);
 
   return (
     <Box
@@ -477,7 +476,7 @@ export default function AdminExpenses() {
           zIndex: 1000,
           backdropFilter: "blur(20px)",
           borderBottom: "1px solid #e2e8f0",
-          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
+          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.2)",
         }}
       >
         <Box sx={{ maxWidth: 1400, mx: "auto", px: 3, py: 2.5 }}>
@@ -534,24 +533,23 @@ export default function AdminExpenses() {
               <Chip
                 icon={
                   currentUser?.role === "finance" ? (
-                    <AccountBalance />
+                    <AccountBalance sx={{ height: 20, width: 20 }} />
                   ) : (
-                    <SupervisorAccount />
+                    <SupervisorAccount sx={{ height: 20, width: 20 }} />
                   )
                 }
                 label={currentUser?.role?.toUpperCase()}
                 sx={{
-                  height: 30,
+                  height: 28,
                   backgroundColor:
                     currentUser?.role === "finance"
                       ? "rgba(16, 185, 129, 0.1)"
                       : "rgba(59, 130, 246, 0.1)",
                   color:
                     currentUser?.role === "finance" ? "#10b981" : "#3b82f6",
-                  border: `1px solid ${
-                    currentUser?.role === "finance" ? "#10b981" : "#3b82f6"
-                  }20`,
-                  fontWeight: 600,
+                    borderRadius: "15px",
+                  fontWeight: 550,
+                  boxShadow: "rgba(0, 0, 0, 0.18) 0px 2px 4px 0px inset",
                 }}
               />
               <Tooltip title="Home">
@@ -560,8 +558,7 @@ export default function AdminExpenses() {
                   sx={{
                     height: 33,
                     width: 33,
-                    backgroundColor: "rgba(59, 130, 246, 0.1)",
-                    color: "#3b82f6",
+                    color: "#000000ff",
                     "&:hover": { backgroundColor: "rgba(59, 130, 246, 0.2)" },
                   }}
                 >
@@ -574,8 +571,7 @@ export default function AdminExpenses() {
                   sx={{
                     height: 33,
                     width: 33,
-                    backgroundColor: "rgba(143, 59, 246, 0.1)",
-                    color: "#413bf6ff",
+                    color: "#000000ff",
                     "&:hover": { backgroundColor: "rgba(96, 59, 246, 0.2)" },
                   }}
                 >
@@ -588,8 +584,7 @@ export default function AdminExpenses() {
                   sx={{
                     height: 33,
                     width: 33,
-                    backgroundColor: "rgba(239, 68, 68, 0.1)",
-                    color: "#ef4444",
+                    color: "#000000ff",
                     "&:hover": { backgroundColor: "rgba(239, 68, 68, 0.2)" },
                   }}
                 >
@@ -638,7 +633,7 @@ export default function AdminExpenses() {
                   currentUser?.role === "finance"
                     ? totalForFinance
                     : totals.total,
-                icon: RequestQuote ,
+                icon: RequestQuote,
                 color: "#0969da",
                 bg: "linear-gradient(135deg, #dbeafe 0%, #f0f9ff 100%)",
                 border: "#0969da",
