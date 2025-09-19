@@ -571,10 +571,28 @@ export default function BulkExpenseEntry() {
             </Box>
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <IconButton sx={{ color: "primary.light" }} onClick={handleHome}>
+              <IconButton
+                sx={{
+                  transition: "all 0.2s ease",
+                  "&:hover": {
+                    color: "primary.main",
+                    transform: "translateY(-1px)",
+                  },
+                }}
+                onClick={handleHome}
+              >
                 <Home />
               </IconButton>
-              <IconButton sx={{ color: "error.main" }} onClick={handleLogout}>
+              <IconButton
+                  sx={{
+                  transition: "all 0.2s ease",
+                  "&:hover": {
+                    color: "error.main",
+                    transform: "translateY(-1px)",
+                  },
+                }}
+                onClick={handleLogout}
+              >
                 <Logout />
               </IconButton>
               <Button

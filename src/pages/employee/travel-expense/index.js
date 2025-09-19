@@ -844,6 +844,7 @@ export default function ExpenseIndex() {
                       borderRadius: "8px",
                       fontWeight: 600,
                       transition: "all 0.2s ease",
+                       background:"linear-gradient(135deg, #3367e09c 0%)",
                       "&:hover": {
                         transform: "translateY(-1px)",
                       },
