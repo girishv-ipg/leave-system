@@ -1,17 +1,22 @@
 // src/pages/admin/travel-expense/expense.js
 "use client";
 
+import * as XLSX from "xlsx";
+
 import {
   AccountBalance,
   AdminPanelSettings,
   Assessment,
   Cancel,
   CheckCircle,
+  Download,
   Edit,
   ExpandLess,
   ExpandMore,
+  FileDownload,
   Home,
   Logout,
+  MoreVert,
   PendingActions,
   Receipt,
   RequestQuote,
@@ -39,6 +44,10 @@ import {
   Fade,
   Grid,
   IconButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
   Paper,
   Stack,
   Tab,
@@ -76,6 +85,145 @@ export default function AdminExpenses() {
   });
   const [comments, setComments] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [selectedSubmission, setSelectedSubmission] = useState(null);
+
+  // Menu handlers
+  const handleMenuOpen = (event, submission) => {
+    setAnchorEl(event.currentTarget);
+    setSelectedSubmission(submission);
+  };
+
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+    setSelectedSubmission(null);
+  };
+
+  // Export to Excel function
+  const exportToExcel = (submission) => {
+    const workbook = XLSX.utils.book_new();
+
+    // Prepare data for Excel
+    const excelData = submission.expenses.map((expense, index) => ({
+      "S.No": index + 1,
+      "Employee Name": submission.employeeName,
+      "Employee Code": submission.employeeCode,
+      "Expense Type": expense.expenseType,
+      "Amount (₹)": parseFloat(expense.amount).toLocaleString(),
+      Description: expense.description,
+      "Travel Start Date": expense.travelStartDate
+        ? new Date(expense.travelStartDate).toLocaleDateString()
+        : "",
+      "Travel End Date": expense.travelEndDate
+        ? new Date(expense.travelEndDate).toLocaleDateString()
+        : "",
+      Status: expense.status.charAt(0).toUpperCase() + expense.status.slice(1),
+      "Manager Status": expense.managerApproval?.status
+        ? expense.managerApproval.status.charAt(0).toUpperCase() +
+          expense.managerApproval.status.slice(1)
+        : "Pending",
+      "Finance Status": expense.financeApproval?.status
+        ? expense.financeApproval.status.charAt(0).toUpperCase() +
+          expense.financeApproval.status.slice(1)
+        : "Pending",
+      "Manager Comments": expense.managerApproval?.comments || "",
+      "Finance Comments": expense.financeApproval?.comments || "",
+      "Submitted Date": new Date(submission.submittedAt).toLocaleDateString(),
+      "Is Resubmitted": submission.isResubmitted ? "Yes" : "No",
+      "Total Amount (₹)": parseFloat(submission.totalAmount).toLocaleString(),
+    }));
+
+    // Create worksheet
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+
+    // Set column widths
+    const columnWidths = [
+      { wch: 8 }, // S.No
+      { wch: 20 }, // Employee Name
+      { wch: 15 }, // Employee Code
+      { wch: 15 }, // Expense Type
+      { wch: 12 }, // Amount
+      { wch: 30 }, // Description
+      { wch: 15 }, // Travel Start Date
+      { wch: 15 }, // Travel End Date
+      { wch: 12 }, // Status
+      { wch: 15 }, // Manager Status
+      { wch: 15 }, // Finance Status
+      { wch: 25 }, // Manager Comments
+      { wch: 25 }, // Finance Comments
+      { wch: 15 }, // Submitted Date
+      { wch: 15 }, // Is Resubmitted
+      { wch: 15 }, // Total Amount
+    ];
+    worksheet["!cols"] = columnWidths;
+
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Expenses");
+
+    // Generate filename
+    const fileName = `${submission.employeeName}_${
+      submission.employeeCode
+    }_Expenses_${new Date().toLocaleDateString().replace(/\//g, "-")}.xlsx`;
+
+    // Save file
+    XLSX.writeFile(workbook, fileName);
+
+    setSuccess(`Excel file downloaded: ${fileName}`);
+    setTimeout(() => setSuccess(""), 3000);
+    handleMenuClose();
+  };
+
+  // Download individual receipt function
+  const downloadReceipt = async (expense) => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axiosInstance.get(
+        `/expenses/${expense._id}/fileData`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      const expenseData = response.data;
+
+      if (expenseData.fileData) {
+        const byteCharacters = atob(expenseData.fileData);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: expenseData.fileType });
+
+        // Create download link
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+
+        // Get file extension from fileType or fileName
+        const extension =
+          expenseData.fileName?.split(".").pop() ||
+          (expenseData.fileType?.includes("pdf")
+            ? "pdf"
+            : expenseData.fileType?.includes("image")
+            ? "jpg"
+            : "file");
+
+        link.download = `${expense.expenseType}_${expense.amount}_receipt.${extension}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+        setSuccess(`Receipt downloaded successfully`);
+        setTimeout(() => setSuccess(""), 3000);
+      } else {
+        setError("No receipt found for this expense");
+      }
+    } catch (error) {
+      setError("Error downloading receipt: " + error.message);
+    }
+  };
 
   // Get current user info
   useEffect(() => {
@@ -547,7 +695,7 @@ export default function AdminExpenses() {
                       : "rgba(59, 130, 246, 0.1)",
                   color:
                     currentUser?.role === "finance" ? "#10b981" : "#3b82f6",
-                    borderRadius: "15px",
+                  borderRadius: "15px",
                   fontWeight: 550,
                   boxShadow: "rgba(0, 0, 0, 0.18) 0px 2px 4px 0px inset",
                 }}
@@ -876,28 +1024,59 @@ export default function AdminExpenses() {
                           sx={{ p: 2, cursor: "pointer" }}
                           onClick={() => toggleExpanded(submission._id)}
                         >
-                          {/* Prominent Amount with Status Color */}
-                          <Typography
-                            variant="h5"
+                          {/* Header with Export Button */}
+                          <Box
                             sx={{
-                              fontWeight: 800,
-                              color:
-                                submissionStatus === "approved"
-                                  ? "#1a7f37"
-                                  : submissionStatus === "rejected"
-                                  ? "#cf222e"
-                                  : submissionStatus === "manager_approved"
-                                  ? currentUser?.role === "finance"
-                                    ? "#bf8700"
-                                    : "#37bdfbff" // Show as pending (orange) for finance
-                                  : submissionStatus === "pending"
-                                  ? "#bf8700"
-                                  : "#1e293b",
-                              fontFamily: '"SF Mono", "Monaco", monospace',
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "flex-start",
+                              mb: 1,
                             }}
                           >
-                            ₹{submission.totalAmount?.toLocaleString()}
-                          </Typography>
+                            {/* Prominent Amount with Status Color */}
+                            <Typography
+                              variant="h5"
+                              sx={{
+                                fontWeight: 800,
+                                color:
+                                  submissionStatus === "approved"
+                                    ? "#1a7f37"
+                                    : submissionStatus === "rejected"
+                                    ? "#cf222e"
+                                    : submissionStatus === "manager_approved"
+                                    ? currentUser?.role === "finance"
+                                      ? "#bf8700"
+                                      : "#37bdfbff" // Show as pending (orange) for finance
+                                    : submissionStatus === "pending"
+                                    ? "#bf8700"
+                                    : "#1e293b",
+                                fontFamily: '"SF Mono", "Monaco", monospace',
+                              }}
+                            >
+                              ₹{submission.totalAmount?.toLocaleString()}
+                            </Typography>
+
+                            {/* Export Menu Button */}
+                            <Tooltip title="Export Options">
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMenuOpen(e, submission);
+                                }}
+                                sx={{
+                                  color: "#64748b",
+                                  "&:hover": {
+                                    backgroundColor: "rgba(100, 116, 139, 0.1)",
+                                    color: "#0969da",
+                                  },
+                                }}
+                              >
+                                <MoreVert />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+
                           <Box sx={{ display: "flex", alignItems: "center" }}>
                             <Box sx={{ flexGrow: 1 }}>
                               <Box
@@ -1384,7 +1563,7 @@ export default function AdminExpenses() {
                                       </TableCell>
                                       <TableCell>
                                         <Box sx={{ display: "flex", gap: 0.5 }}>
-                                          {/* Only View Document Button */}
+                                          {/* View Document Button */}
                                           {expense.fileName && (
                                             <Tooltip title="View Receipt">
                                               <IconButton
@@ -1396,6 +1575,22 @@ export default function AdminExpenses() {
                                                 sx={{ color: "info.main" }}
                                               >
                                                 <Visibility fontSize="small" />
+                                              </IconButton>
+                                            </Tooltip>
+                                          )}
+
+                                          {/* Download Receipt Button */}
+                                          {expense.fileName && (
+                                            <Tooltip title="Download Receipt">
+                                              <IconButton
+                                                size="small"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  downloadReceipt(expense);
+                                                }}
+                                                sx={{ color: "#10b981" }}
+                                              >
+                                                <Download fontSize="small" />
                                               </IconButton>
                                             </Tooltip>
                                           )}
@@ -1597,6 +1792,42 @@ export default function AdminExpenses() {
             )}
           </CardContent>
         </Card>
+
+        {/* Export Menu */}
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={handleMenuClose}
+          PaperProps={{
+            elevation: 8,
+            sx: {
+              borderRadius: "8px",
+              minWidth: 180,
+              "& .MuiMenuItem-root": {
+                px: 2,
+                py: 1.5,
+                borderRadius: "4px",
+                mx: 0.5,
+                my: 0.25,
+                "&:hover": {
+                  backgroundColor: "rgba(59, 130, 246, 0.1)",
+                },
+              },
+            },
+          }}
+          transformOrigin={{ horizontal: "right", vertical: "top" }}
+          anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
+        >
+          <MenuItem
+            onClick={() => exportToExcel(selectedSubmission)}
+            sx={{ color: "#059669" }}
+          >
+            <ListItemIcon>
+              <FileDownload sx={{ fontSize: 20, color: "#059669" }} />
+            </ListItemIcon>
+            <ListItemText primary="Export to Excel" />
+          </MenuItem>
+        </Menu>
 
         {/* Action Dialog */}
         <Dialog
