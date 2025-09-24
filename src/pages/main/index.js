@@ -34,7 +34,7 @@ const Main = () => {
     }
   };
 
-   const handleLeaveManagementClick = () => {
+  const handleLeaveManagementClick = () => {
     // Get user data from localStorage
     const userData = localStorage.getItem("user");
     let userRole = "employee"; // default
@@ -48,17 +48,36 @@ const Main = () => {
       }
     }
 
-    if (
-      userRole === "admin" ||
-      userRole === "manager" ||
-      userRole === "hr"
-    ) {
+    if (userRole === "admin" || userRole === "manager" || userRole === "hr") {
       router.push("/admin/requests");
     } else {
       router.push("/employee/requestLeave");
     }
   };
 
+  const handleTrackAssetsClick = () => {
+    // Get user data from localStorage
+    const userData = localStorage.getItem("user");
+
+    let userRole = "employee";
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        userRole = user.role || "employee";
+      } catch (e) {
+        console.log("Error parsing user data:", e);
+      }
+    }
+    if (
+      userRole === "admin" ||
+      userRole === "manager" ||
+      userRole === "finance"
+    ) {
+      router.push("/admin/track-assets/assets");
+    } else {
+      router.push("/employee/track-assets/assets");
+    }
+  };
   const cards = [
     {
       title: "Leave Management",
@@ -69,6 +88,11 @@ const Main = () => {
       title: "Travel Expense Management",
       route: "/travel-expense",
       onClick: handleTravelExpenseClick,
+    },
+    {
+      title: "Track Assets",
+      route: "/track-assets",
+      onClick: handleTrackAssetsClick,
     },
   ];
   const handleLogout = () => {

@@ -10,6 +10,13 @@ const cors = require("cors");
 
 // Import the expense routes
 const expenseRoutes = require("./routes/travelExpense");
+const {
+  submitAssetInformation,
+  getAllAssets,
+  getAssetById,
+  updateAssetById,
+  deleteAssetById,
+} = require("./controllers/trackAssets");
 
 const app = express();
 
@@ -77,6 +84,11 @@ app.get(
 );
 app.put("/update-password", authenticate, userController.updateUserPassword);
 
+app.post("/api/assets", submitAssetInformation);
+app.get("/api/assets", getAllAssets);
+app.get("/api/assets/:id", getAssetById);
+app.put("/api/assets/:id", updateAssetById);
+app.delete("/api/assets/:id", deleteAssetById);
 // Use the expense routes (this will mount /api/expenses/* endpoints)
 app.use(expenseRoutes);
 

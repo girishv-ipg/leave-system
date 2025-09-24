@@ -58,6 +58,7 @@ import {
 } from "@mui/material";
 import React, { useEffect, useMemo, useState } from "react";
 
+import ExpenseFiltersMenuForEmployee from "@/utils/ExpenseFiltersEmployee";
 import { RequestQuote } from "@mui/icons-material";
 import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
@@ -81,6 +82,8 @@ export default function ExpenseIndex() {
     travelEndDate: "",
   });
   const [newFile, setNewFile] = useState(null);
+  const [filterType, setFilterType] = useState("year");
+  const [filters, setFilters] = useState({ year: "", month: "", date: "" });
 
   const router = useRouter();
 
@@ -119,6 +122,84 @@ export default function ExpenseIndex() {
     },
     { value: "rejected", label: "Rejected", icon: <Cancel />, color: "error" },
   ];
+  const matchesYear = (d, year) => {
+    if (!year || !d) return true;
+    const nd = new Date(d);
+    if (isNaN(nd)) return false;
+    return nd.getFullYear() === Number(year);
+  };
+
+  const matchesMonth = (d, month) => {
+    if (!month || !d) return true;
+    const nd = new Date(d);
+    if (isNaN(nd)) return false;
+    return nd.getMonth() + 1 === Number(month); // 0-based in JS
+  };
+
+  // ✅ combine status-tab filtering + date filtering
+  useEffect(() => {
+    // base list from tab
+    let base =
+      activeTab === "all"
+        ? bulkSubmissions
+        : bulkSubmissions
+            .map((submission) => ({
+              ...submission,
+              expenses: submission.expenses.filter(
+                (expense) => expense.status === activeTab
+              ),
+            }))
+            .filter((submission) => submission.expenses.length > 0);
+
+    const { year, month, date } = filters;
+
+    // if no extra filters, done
+    if (!year && !month && !date) {
+      setFilteredSubmissions(base);
+      return;
+    }
+
+    // apply year/month/date on each submission's expenses
+    const filtered = base
+      .map((submission) => {
+        const exp = (submission.expenses || []).filter((e) => {
+          const start = e.travelStartDate ? new Date(e.travelStartDate) : null;
+          const end = e.travelEndDate ? new Date(e.travelEndDate) : null;
+
+          // if the user applied any date filters but expense has invalid dates → drop it
+          if (
+            (year || month || date) &&
+            (!start || !end || isNaN(start) || isNaN(end))
+          ) {
+            return false;
+          }
+
+          // year/month: accept if either start or end matches
+          if (year) {
+            const yOk = matchesYear(start, year) || matchesYear(end, year);
+            if (!yOk) return false;
+          }
+          if (month) {
+            const mOk = matchesMonth(start, month) || matchesMonth(end, month);
+            if (!mOk) return false;
+          }
+
+          // specific date within [start, end] inclusive
+          if (date) {
+            const d = new Date(date);
+            if (isNaN(d)) return false;
+            if (!(d >= start && d <= end)) return false;
+          }
+
+          return true;
+        });
+
+        return { ...submission, expenses: exp };
+      })
+      .filter((s) => s.expenses.length > 0);
+
+    setFilteredSubmissions(filtered);
+  }, [activeTab, bulkSubmissions, filters]);
 
   const fetchExpenses = async () => {
     try {
@@ -461,7 +542,7 @@ export default function ExpenseIndex() {
                   width: 40,
                   height: 40,
                   mr: 3,
-                  background:"linear-gradient(135deg, #3367e09c 0%)"
+                  background: "linear-gradient(135deg, #3367e09c 0%)",
                 }}
               >
                 <Receipt />
@@ -540,7 +621,7 @@ export default function ExpenseIndex() {
                     transform: "translateY(-1px)",
                     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.16)",
                   },
-                  background:"linear-gradient(135deg, #3367e09c 0%)",
+                  background: "linear-gradient(135deg, #3367e09c 0%)",
                 }}
               >
                 New Expense
@@ -585,7 +666,7 @@ export default function ExpenseIndex() {
                                 fontWeight: 600,
                                 color: "text.primary",
                                 lineHeight: 1.2,
-                                textTransform: "capitalize"
+                                textTransform: "capitalize",
                               }}
                             >
                               {currentUser.name || "Employee"}
@@ -647,7 +728,7 @@ export default function ExpenseIndex() {
                       fontWeight: 600,
                       cursor: "pointer",
                       transition: "all 0.2s ease",
-                     boxShadow: "rgba(0, 0, 0, 0.15) 0px 2px 4px 0px inset",
+                      boxShadow: "rgba(0, 0, 0, 0.15) 0px 2px 4px 0px inset",
                     }}
                   >
                     {currentUser.name
@@ -746,7 +827,7 @@ export default function ExpenseIndex() {
         </Grid>
 
         {/* Enhanced Tabs */}
-        <Card
+        {/* <Card
           elevation={0}
           sx={{
             borderRadius: "12px",
@@ -798,6 +879,85 @@ export default function ExpenseIndex() {
               />
             ))}
           </Tabs>
+        </Card> */}
+        {/* Enhanced Tabs + Right-aligned Filters in the same row */}
+        <Card
+          elevation={0}
+          sx={{
+            borderRadius: "12px",
+            overflow: "hidden",
+            backgroundColor: "white",
+            border: "1px solid #e1e4e8",
+            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+            mb: 3,
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "stretch",
+              gap: 2,
+              borderBottom: "1px solid #e1e4e8",
+              px: 2,
+              // ensure single row
+              flexWrap: "nowrap",
+            }}
+          >
+            <Tabs
+              value={activeTab}
+              onChange={(e, newValue) => setActiveTab(newValue)}
+              sx={{
+                flex: 1, // take remaining space
+                minWidth: 0, // allow shrinking
+                "& .MuiTab-root": {
+                  minHeight: 60,
+                  fontWeight: 600,
+                  textTransform: "none",
+                  fontSize: "0.875rem",
+                  transition: "all 0.2s ease",
+                  "&:hover": { transform: "translateY(-1px)" },
+                },
+                "& .Mui-selected": { color: "#0969da" },
+                "& .MuiTabs-indicator": {
+                  backgroundColor: "#0969da",
+                  height: 3,
+                  borderRadius: "3px 3px 0 0",
+                },
+              }}
+              variant="scrollable"
+              scrollButtons="auto"
+            >
+              {tabs.map((tab) => (
+                <Tab
+                  key={tab.value}
+                  label={tab.label}
+                  value={tab.value}
+                  icon={tab.icon}
+                  iconPosition="start"
+                />
+              ))}
+            </Tabs>
+
+            {/* Right-aligned filter menu */}
+            <Box
+              sx={{
+                ml: "auto",
+                display: "flex",
+                alignItems: "center",
+                borderLeft: "1px solid #e1e4e8",
+                pl: 2, // little padding after the divider
+                py: 1, // vertically center with tabs
+              }}
+            >
+              <ExpenseFiltersMenuForEmployee
+                filterType={filterType}
+                setFilterType={setFilterType}
+                filters={filters}
+                setFilters={setFilters}
+                compact
+              />
+            </Box>
+          </Box>
         </Card>
 
         {/* Expense Submissions */}
@@ -844,7 +1004,7 @@ export default function ExpenseIndex() {
                       borderRadius: "8px",
                       fontWeight: 600,
                       transition: "all 0.2s ease",
-                       background:"linear-gradient(135deg, #3367e09c 0%)",
+                      background: "linear-gradient(135deg, #3367e09c 0%)",
                       "&:hover": {
                         transform: "translateY(-1px)",
                       },

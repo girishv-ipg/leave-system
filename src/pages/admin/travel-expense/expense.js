@@ -40,7 +40,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   Fade,
   Grid,
   IconButton,
@@ -62,8 +61,9 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import ExpenseFiltersMenu from "@/utils/ExpenseFiltersOthers";
 import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
 
@@ -224,6 +224,16 @@ export default function AdminExpenses() {
       setError("Error downloading receipt: " + error.message);
     }
   };
+
+  const [filterType, setFilterType] = useState("name");
+
+  // Table filters
+  const [filters, setFilters] = useState({
+    name: "",
+    year: "",
+    month: "",
+    date: "",
+  });
 
   // Get current user info
   useEffect(() => {
@@ -608,6 +618,99 @@ export default function AdminExpenses() {
   const totalForFinance =
     totals.approved + totals.rejected + totals.manager_approved;
 
+  // ---- Filtering helpers ----
+  const normalize = (s) => (s || "").toString().trim().toLowerCase();
+
+  const dateInRangeOrEqual = (theDate, start, end) => {
+    // checks if `theDate` (yyyy-mm-dd) falls within [start, end] (inclusive)
+    if (!theDate || !start || !end) return false;
+    const d = new Date(theDate);
+    const s = new Date(start);
+    const e = new Date(end);
+    if (isNaN(d) || isNaN(s) || isNaN(e)) return false;
+    return d >= s && d <= e;
+  };
+
+  const matchesYear = (d, year) => {
+    if (!year || !d) return true;
+    const nd = new Date(d);
+    if (isNaN(nd)) return false;
+    return nd.getFullYear() === Number(year);
+  };
+
+  const matchesMonth = (d, month) => {
+    if (!month || !d) return true;
+    const nd = new Date(d);
+    if (isNaN(nd)) return false;
+    // getMonth() is 0-based; our dropdown is 1-based
+    return nd.getMonth() + 1 === Number(month);
+  };
+
+  // Build filtered list used for rendering the table
+  const displayedSubmissions = useMemo(() => {
+    const hasAnyFilter =
+      normalize(filters.name) || filters.year || filters.month || filters.date;
+
+    if (!hasAnyFilter) return bulkSubmissions;
+
+    const nameNeedle = normalize(filters.name);
+    const specificDate = filters.date || ""; // yyyy-mm-dd
+
+    return bulkSubmissions
+      .map((submission) => {
+        // Name filter: matches employeeName
+        const nameOk = nameNeedle
+          ? normalize(submission.employeeName).includes(nameNeedle)
+          : true;
+        if (!nameOk) return null;
+
+        // Filter expenses by year/month/date
+        const filteredExpenses = (submission.expenses || []).filter((exp) => {
+          const start = exp.travelStartDate
+            ? new Date(exp.travelStartDate)
+            : null;
+          const end = exp.travelEndDate ? new Date(exp.travelEndDate) : null;
+
+          // If no dates on the expense, fail only if user asked for a date match
+          if (!start || isNaN(start) || !end || isNaN(end)) {
+            if (filters.year || filters.month || specificDate) return false;
+            return true;
+          }
+
+          // year/month match on either start OR end date (common UX expectation)
+          const yearOk =
+            matchesYear(start, filters.year) || matchesYear(end, filters.year);
+          const monthOk =
+            matchesMonth(start, filters.month) ||
+            matchesMonth(end, filters.month);
+
+          if (filters.year && !yearOk) return false;
+          if (filters.month && !monthOk) return false;
+
+          // Specific date should lie within the travel period
+          if (specificDate) {
+            const yyyyMmDd = (d) => {
+              const y = d.getFullYear();
+              const m = String(d.getMonth() + 1).padStart(2, "0");
+              const day = String(d.getDate()).padStart(2, "0");
+              return `${y}-${m}-${day}`;
+            };
+            const s = yyyyMmDd(start);
+            const e = yyyyMmDd(end);
+            if (!dateInRangeOrEqual(specificDate, s, e)) return false;
+          }
+
+          return true;
+        });
+
+        if (filteredExpenses.length === 0) return null;
+
+        // Return a shallow copy with filtered expenses to render
+        return { ...submission, expenses: filteredExpenses };
+      })
+      .filter(Boolean);
+  }, [bulkSubmissions, filters]);
+
   return (
     <Box
       sx={{
@@ -843,9 +946,9 @@ export default function AdminExpenses() {
                     border: `1px solid ${stat.border}20`,
                     transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
                     "&:hover": {
-                      transform: "translateY(-2px)",
-                      boxShadow: `0 12px 24px ${stat.border}15`,
-                      borderColor: `${stat.border}40`,
+                      transform: "translateY(-1px)",
+                      boxShadow: "0 8px 25px rgba(0, 0, 0, 0.1)",
+                      borderColor: "#0969da",
                     },
                   }}
                 >
@@ -908,55 +1011,78 @@ export default function AdminExpenses() {
             boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
             display: "flex",
             flexDirection: "column",
-            minHeight: "400px", // Minimum height for small screens
-            maxHeight: { xs: "70vh", sm: "75vh", md: "80vh", lg: "85vh" }, // Responsive max height
+            minHeight: "400px",
+            maxHeight: { xs: "70vh", sm: "75vh", md: "80vh", lg: "85vh" },
           }}
         >
-          {/* Filter Tabs */}
-          <Tabs
-            value={activeTab}
-            onChange={(e, newValue) => setActiveTab(newValue)}
+          {/* Tabs + Filters in one row */}
+          <Box
             sx={{
+              display: "flex",
+              alignItems: "stretch",
+              gap: 2,
               borderBottom: "1px solid #e1e4e8",
               px: 2,
-              flexShrink: 0,
-              transition: "ease-in-out 0.3s",
-              "& .MuiTab-root": {
-                minHeight: 60,
-                fontWeight: 600,
-                textTransform: "none",
-                fontSize: "0.875rem",
-              },
-              "& .Mui-selected": {
-                color: "#0969da",
-              },
-              "& .MuiTabs-indicator": {
-                backgroundColor: "#0969da",
-                height: 3,
-              },
             }}
-            variant="scrollable"
-            scrollButtons="auto"
           >
-            {statusTabs.map((tab) => (
-              <Tab
-                key={tab.value}
-                label={tab.label}
-                value={tab.value}
-                icon={tab.icon}
-                iconPosition="start"
-              />
-            ))}
-          </Tabs>
+            <Tabs
+              value={activeTab}
+              onChange={(e, newValue) => setActiveTab(newValue)}
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                "& .MuiTab-root": {
+                  minHeight: 60,
+                  fontWeight: 600,
+                  textTransform: "none",
+                  fontSize: "0.875rem",
+                },
+                "& .Mui-selected": { color: "#0969da" },
+                "& .MuiTabs-indicator": {
+                  backgroundColor: "#0969da",
+                  height: 3,
+                },
+              }}
+              variant="scrollable"
+              scrollButtons="auto"
+            >
+              {statusTabs.map((tab) => (
+                <Tab
+                  key={tab.value}
+                  label={tab.label}
+                  value={tab.value}
+                  icon={tab.icon}
+                  iconPosition="start"
+                />
+              ))}
+            </Tabs>
 
+            {/* Right-aligned filter menu */}
+            <Box
+              sx={{
+                ml: "auto",
+                display: "flex",
+                alignItems: "center",
+                borderLeft: "1px solid #e1e4e8",
+              }}
+            >
+              <ExpenseFiltersMenu
+                filterType={filterType}
+                setFilterType={setFilterType}
+                filters={filters}
+                setFilters={setFilters}
+                compact
+              />
+            </Box>
+          </Box>
+
+          {/* Scrollable Content */}
           <CardContent
             sx={{
               p: 2,
               flex: 1,
               overflowY: "auto",
-              "&::-webkit-scrollbar": {
-                width: "6px",
-              },
+              "&::-webkit-scrollbar": { width: "6px" },
               "&::-webkit-scrollbar-track": {
                 backgroundColor: "#f1f3f4",
                 borderRadius: "3px",
@@ -964,9 +1090,7 @@ export default function AdminExpenses() {
               "&::-webkit-scrollbar-thumb": {
                 backgroundColor: "#c1c8cd",
                 borderRadius: "3px",
-                "&:hover": {
-                  backgroundColor: "#a8b1ba",
-                },
+                "&:hover": { backgroundColor: "#a8b1ba" },
               },
             }}
           >
@@ -975,7 +1099,7 @@ export default function AdminExpenses() {
               <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
                 <CircularProgress size={40} />
               </Box>
-            ) : bulkSubmissions.length === 0 ? (
+            ) : displayedSubmissions.length === 0 ? (
               <Box sx={{ textAlign: "center", py: 8 }}>
                 <PendingActions
                   sx={{ fontSize: 64, color: "grey.300", mb: 2 }}
@@ -997,7 +1121,7 @@ export default function AdminExpenses() {
             ) : (
               /* Submission Cards with Manager Approved Chip for Finance */
               <Grid container spacing={2}>
-                {bulkSubmissions.map((submission) => {
+                {displayedSubmissions.map((submission) => {
                   const submissionStatus = getSubmissionStatus(
                     submission.expenses
                   );
@@ -1046,7 +1170,7 @@ export default function AdminExpenses() {
                                     : submissionStatus === "manager_approved"
                                     ? currentUser?.role === "finance"
                                       ? "#bf8700"
-                                      : "#37bdfbff" // Show as pending (orange) for finance
+                                      : "#37bdfbff"
                                     : submissionStatus === "pending"
                                     ? "#bf8700"
                                     : "#1e293b",
@@ -1116,7 +1240,7 @@ export default function AdminExpenses() {
                                     {submission.employeeCode}
                                   </Typography>
                                 )}
-                                {/* Status Chips - Special handling for Finance users */}
+                                {/* Status Chips */}
                                 <Box
                                   sx={{
                                     display: "flex",
@@ -1143,7 +1267,6 @@ export default function AdminExpenses() {
                                   )}
                                   {submissionStatus === "manager_approved" && (
                                     <>
-                                      {/* For Finance users, show as "Pending Review" but keep the Manager Approved chip visible */}
                                       {currentUser?.role === "finance" ? (
                                         <>
                                           <Chip
@@ -1159,7 +1282,6 @@ export default function AdminExpenses() {
                                               fontSize: "0.7rem",
                                             }}
                                           />
-                                          {/* Show Manager Approved as additional info */}
                                           <Chip
                                             icon={<SupervisorAccount />}
                                             label="Manager ✓"
@@ -1311,7 +1433,6 @@ export default function AdminExpenses() {
                                         />
                                       </TableCell>
                                       <TableCell>
-                                        {/* Amount with Status Color */}
                                         <Typography
                                           variant="body1"
                                           sx={{
@@ -1703,7 +1824,6 @@ export default function AdminExpenses() {
                                 }}
                               >
                                 {currentUser?.role === "manager" && (
-                                  // Manager sees gradient APPROVE/REJECT buttons
                                   <>
                                     <Button
                                       variant="contained"
