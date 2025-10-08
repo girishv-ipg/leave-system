@@ -88,7 +88,7 @@ Once started:
 
 ```bash
 # 1. Clone the repository
-git clone <your-repo-url>
+git clone https://github.com/girishv-ipg/leave-system.git
 cd leave-system
 
 # 2. Build the Docker images
