@@ -104,36 +104,6 @@ docker compose up -d
 
 ---
 
-## 📁 Project Structure (Simplified)
-
-```
-leave-system/
-├── .env                  # Environment variables
-├── docker-compose.yml    # Docker Compose setup
-├── Dockerfile            # Frontend Dockerfile (Next.js)
-├── Dockerfile-backend    # Backend Dockerfile (Node.js)
-├── mongo_data/           # MongoDB persistent data
-├── src/                  # Frontend source code
-├── server/               # Backend code
-└── public/               # Static assets
-```
-
----
-
-## 🧩 Troubleshooting
-
-If you see frontend requests still going to `localhost:3000`, rebuild with:
-```bash
-docker compose build --no-cache --build-arg NEXT_PUBLIC_API_BASE_URL=localhost
-```
-
-If MongoDB fails to connect, ensure your `.env` contains:
-```bash
-MONGO_URL=mongodb://root:password@mongo:27017/leaveSystem?authSource=admin
-```
-
----
-
 ## 📜 License
-This project is intended for internal or educational use.  
+This project is intended for internal IPG use.  
 You are free to modify and extend it to suit your needs.
