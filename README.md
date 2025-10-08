@@ -67,7 +67,7 @@ Once started:
 |----------|----------|
 | View running containers | `docker ps` |
 | Stop all containers | `docker compose down` |
-| Stop + remove volumes (reset DB) | `docker compose down --volumes` |
+| Stop containers | `docker compose down` |
 | Rebuild images from scratch | `docker compose build --no-cache` |
 | View real-time logs | `docker compose logs -f` |
 
