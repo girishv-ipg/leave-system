@@ -70,7 +70,6 @@ You can replace `ipgwk10021` with any other hostname or IP where the backend wil
 |----------|----------|
 | View running containers | `docker ps` |
 | Stop all containers | `docker compose down` |
-| Stop and remove containers | `docker compose down` |
 | Rebuild images from scratch | `docker compose build --no-cache` |
 | View real-time logs | `docker compose logs -f` |
 
