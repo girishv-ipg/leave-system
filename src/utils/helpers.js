@@ -2,8 +2,7 @@ import axios from "axios";
 
 // Create an Axios instance
 const axiosInstance = axios.create({
-  baseURL: "http://IPGNB10348:4000/",
-  // baseURL: "http://localhost:4000/",
+  baseURL: `http://${process.env.NEXT_PUBLIC_API_HOST}:4000`,
   timeout: 50000,
 });
 
@@ -12,7 +11,7 @@ axiosInstance.interceptors.request.use(
   (config) => {
     // Only set application/json for requests that aren't FormData
     if (!(config.data instanceof FormData)) {
-      config.headers['Content-Type'] = 'application/json';
+      config.headers["Content-Type"] = "application/json";
     }
     // For FormData, let the browser set the Content-Type with boundary
     return config;
