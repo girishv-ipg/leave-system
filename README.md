@@ -110,5 +110,5 @@ docker compose up -d
 ---
 
 ## 📜 License
-This project is intended for internal IPG use.  
+This project is intended for internal (IPG Automotive India) use.  
 You are free to modify and extend it to suit your needs.
