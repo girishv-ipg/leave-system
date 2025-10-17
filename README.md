@@ -24,7 +24,7 @@ Before starting, make sure you have:
 
 By default, the frontend is already configured to use:
 ```
-NEXT_PUBLIC_API_BASE_URL=localhost
+NEXT_PUBLIC_API_HOST=localhost
 ```
 
 So to run the entire stack locally, you just need:
@@ -52,14 +52,14 @@ you need to tell the frontend which host to call for API requests.
 
 Run the following commands:
 ```bash
-docker compose build --build-arg NEXT_PUBLIC_API_BASE_URL=ipgwk10021
+docker compose build --build-arg NEXT_PUBLIC_API_HOST=ipgwk10021
 docker compose up -d
 ```
 
 You can replace `ipgwk10021` with any other hostname or IP where the backend will be accessible.
 
 🧠 **Explanation:**
-- The `--build-arg` flag overrides the default `NEXT_PUBLIC_API_BASE_URL` value during the frontend build.
+- The `--build-arg` flag overrides the default `NEXT_PUBLIC_API_HOST` value during the frontend build.
 - This ensures the frontend knows which server to contact for API calls.
 
 ---
@@ -101,7 +101,7 @@ docker compose up -d --build
 ### 🌐 Server Deployment
 ```bash
 # 1. Build the images with your server hostname
-docker compose build --build-arg NEXT_PUBLIC_API_BASE_URL=ipgwk10021
+docker compose build --build-arg NEXT_PUBLIC_API_HOST=ipgwk10021
 
 # 2. Run the stack
 docker compose up -d
