@@ -127,7 +127,7 @@ const EmployeeList = () => {
           <Typography>
             <b>Designation:</b> {employee?.designation}
           </Typography>
-            <Typography>
+          <Typography>
             <b>Date of Joining:</b> {employee?.joiningDate}
           </Typography>
           <Typography>
@@ -210,19 +210,15 @@ const EmployeeList = () => {
                         </Button>
                       )}
 
-                    {leave.status === "approved" &&
-                      isFutureLeave(leave.startDate) && (
-                        <Button
-                          onClick={() =>
-                            handleUpdateStatus(
-                              leave._id,
-                              "withdrawal-requested"
-                            )
-                          }
-                        >
-                          Request Withdrawal
-                        </Button>
-                      )}
+                    {leave.status === "approved" && (
+                      <Button
+                        onClick={() =>
+                          handleUpdateStatus(leave._id, "withdrawal-requested")
+                        }
+                      >
+                        Request Withdrawal
+                      </Button>
+                    )}
 
                     {!isFutureLeave(leave.startDate) && (
                       <Typography variant="caption" color="gray">

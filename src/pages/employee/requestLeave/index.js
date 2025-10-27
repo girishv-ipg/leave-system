@@ -117,6 +117,8 @@ const LeaveRequestForm = () => {
               >
                 <MenuItem value="casual">Casual</MenuItem>
                 <MenuItem value="sick">Sick</MenuItem>
+                <MenuItem value="wfh">WFH</MenuItem>
+                <MenuItem value="on_duty">On Duty</MenuItem>
               </TextField>
               <TextField
                 label="Leave Duration"

@@ -371,6 +371,21 @@ const updateUserPassword = async (req, res) => {
   }
 };
 
+// all employees dropdown for reports and select only name and id
+
+const getAllEmployees = async (req, res) => {
+  try {
+    const employees = await User.find().select("name _id employeeCode");
+    res.status(200).json({
+      message: "Employee list fetched successfully",
+      data: employees,
+    });
+  } catch (error) {
+    console.error("Error fetching employee list:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 module.exports = {
   createUser,
   updateUser,
@@ -380,4 +395,5 @@ module.exports = {
   getUserById,
   deleteUserById,
   updateUserPassword,
+  getAllEmployees,
 };

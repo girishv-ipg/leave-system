@@ -3,6 +3,7 @@ const express = require("express");
 const connect = require("./config/db");
 const userController = require("./controllers/user");
 const leaveController = require("./controllers/leaveRequest");
+const adminReportsController = require("./controllers/adminReports");
 const User = require("./models/user");
 const Leave = require("./models/leave");
 const authenticate = require("./middleware/authenticate");
@@ -83,6 +84,13 @@ app.get(
   userController.getEmployeeWithLeaveHistory
 );
 app.put("/update-password", authenticate, userController.updateUserPassword);
+
+app.get("/admin/users", authenticate, userController.getAllEmployees);
+app.post(
+  "/admin/reports/leaves",
+  authenticate,
+  adminReportsController.exportLeaveReport
+);
 
 app.post("/api/assets", submitAssetInformation);
 app.get("/api/assets", getAllAssets);

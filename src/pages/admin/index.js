@@ -66,6 +66,10 @@ export default function AdminLayout({ children }) {
             My Leave Overview
           </Button>
 
+          <Button color="inherit" component={Link} href="/admin/reports">
+            Reports
+          </Button>
+
           <IconButton color="inherit" onClick={handleLogout}>
             <LogoutIcon />
           </IconButton>

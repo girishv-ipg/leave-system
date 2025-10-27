@@ -26,9 +26,28 @@ import { useEffect, useState } from "react";
 import AdminLayout from "..";
 import CalendarModal from "./CalendarModal";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import ExcelJS from "exceljs";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import LeaveCalendar from "@/components/Calendar";
+import { saveAs } from "file-saver";
 import { useRouter } from "next/router";
 import withAdminAuth from "@/pages/auth/Authentication";
+
+const holidays = [
+  "2025-01-01",
+  "2025-01-14",
+  "2025-01-26",
+  "2025-02-26",
+  "2025-04-18",
+  "2025-05-01",
+  "2025-08-15",
+  "2025-08-27",
+  "2025-10-01",
+  "2025-10-02",
+  "2025-10-20",
+  "2025-11-01",
+  "2025-10-25",
+];
 
 const EmployeeList = () => {
   const router = useRouter();
@@ -95,22 +114,6 @@ const EmployeeList = () => {
   }, []);
 
   const countWorkingDays = (start, end, halfDayType = "") => {
-    const holidays = [
-      "2025-01-01",
-      "2025-01-14",
-      "2025-01-26",
-      "2025-02-26",
-      "2025-04-18",
-      "2025-05-01",
-      "2025-08-15",
-      "2025-08-27",
-      "2025-10-01",
-      "2025-10-02",
-      "2025-10-20",
-      "2025-11-01",
-      "2025-10-25",
-    ];
-
     // Normalize holiday strings for quick lookup
     const holidaySet = new Set(holidays.map((h) => new Date(h).toDateString()));
 
@@ -160,6 +163,399 @@ const EmployeeList = () => {
   const handleCalendarView = (employee) => {
     setSelectedEmployee(employee);
     setCalendarOpen(true);
+  };
+
+  const handleExportToExcel = async (employee) => {
+    console.log(employee.leaveHistory, "employee");
+
+    // --- Parse month and year dynamically ---
+    // Utility: Count weekdays (Mon–Fri) in a given month
+    function getWorkingDaysInMonth(year, month) {
+      let workingDays = 0;
+      const date = new Date(year, month, 1);
+
+      while (date.getMonth() === month) {
+        const day = date.getDay();
+        const dateStr = date.toISOString().slice(0, 10);
+
+        // Skip Saturday, Sunday, and holidays
+        if (day !== 0 && day !== 6 && !holidays.includes(dateStr)) {
+          workingDays++;
+        }
+
+        date.setDate(date.getDate() + 1);
+      }
+
+      return workingDays;
+    }
+
+    // --- Auto-detect latest month from leaveHistory ---
+    const latestLeave = employee.leaveHistory
+      .map((l) => new Date(l.createdAt))
+      .sort((a, b) => b - a)[0];
+
+    const selectedMonth = latestLeave.getMonth();
+    const selectedYear = latestLeave.getFullYear();
+
+    // --- Filter leaves of that month ---
+    const monthlyLeaves = employee.leaveHistory.filter((leave) => {
+      const leaveDate = new Date(leave.createdAt);
+      return (
+        leaveDate.getMonth() === selectedMonth &&
+        leaveDate.getFullYear() === selectedYear
+      );
+    });
+
+    // --- Compute totals ---
+    const totalWorkingDays = getWorkingDaysInMonth(
+      selectedYear,
+      selectedMonth,
+      holidays
+    );
+    const leaveDays = monthlyLeaves.reduce(
+      (sum, leave) => sum + (leave.numberOfDays || 0),
+      0
+    );
+    const workedDays = Math.max(totalWorkingDays - leaveDays, 0);
+
+    // --- Prepare final export data ---
+
+    // Create workbook and worksheet
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Attendance");
+
+    // Define your data rows based on employee object
+    // --- Prepare final data for export ---
+    const data = [
+      ["Field", "Value"],
+      ["Employee Name", employee.name || "N/A"],
+      [
+        "Month",
+        `${new Date(selectedYear, selectedMonth).toLocaleString("default", {
+          month: "long",
+        })} ${selectedYear}`,
+      ],
+      ["Total Working Days", totalWorkingDays],
+      [
+        "Leave Details",
+        monthlyLeaves.length
+          ? monthlyLeaves
+              .map(
+                (leave) =>
+                  `${leave.startDate?.slice(0, 10)} to ${leave.endDate?.slice(
+                    0,
+                    10
+                  )} (${leave.reason || "N/A"})`
+              )
+              .join("; ")
+          : "None",
+      ],
+      ["Leave Days", leaveDays],
+      ["Worked Days", workedDays],
+      ["WFH", 0],
+      ["On Duty", 0],
+    ];
+
+    // Add each row to worksheet
+    data.forEach((row) => worksheet.addRow(row));
+
+    // Header styling
+    worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    worksheet.getRow(1).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF007ACC" },
+    };
+
+    // Auto column width
+    worksheet.columns.forEach((column) => {
+      column.width = 25;
+    });
+
+    // Generate file buffer and trigger download
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    saveAs(blob, `${employee.name || "Employee"}_Attendance.xlsx`);
+  };
+
+  // Utility: Determine quarter from month index (0–11)
+  function getQuarter(month) {
+    if (month < 3) return 1;
+    if (month < 6) return 2;
+    if (month < 9) return 3;
+    return 4;
+  }
+
+  // Utility: Count working days (Mon–Fri) in a given month, excluding holidays
+  function getWorkingDaysInMonth(year, month, holidays = []) {
+    let workingDays = 0;
+    const date = new Date(year, month, 1);
+
+    while (date.getMonth() === month) {
+      const day = date.getDay();
+      const dateStr = date.toISOString().slice(0, 10);
+
+      if (day !== 0 && day !== 6 && !holidays.includes(dateStr)) {
+        workingDays++;
+      }
+
+      date.setDate(date.getDate() + 1);
+    }
+
+    return workingDays;
+  }
+
+  function getWorkingDaysInMonth(year, month, holidays = []) {
+    let workingDays = 0;
+    const date = new Date(year, month, 1);
+
+    while (date.getMonth() === month) {
+      const day = date.getDay();
+      const dateStr = date.toISOString().slice(0, 10);
+      if (day !== 0 && day !== 6 && !holidays.includes(dateStr)) {
+        workingDays++;
+      }
+      date.setDate(date.getDate() + 1);
+    }
+
+    return workingDays;
+  }
+  const handleExportQuarterly = async (employee) => {
+    if (!employee?.leaveHistory?.length) return;
+
+    // --- Find latest leave date ---
+    const latestLeave = employee.leaveHistory
+      .map((l) => new Date(l.createdAt))
+      .sort((a, b) => b - a)[0];
+
+    const latestMonth = latestLeave.getMonth();
+    const latestYear = latestLeave.getFullYear();
+
+    // --- Build last 4 months (rolling) ---
+    const monthsToInclude = [];
+    for (let i = 0; i < 4; i++) {
+      const d = new Date(latestYear, latestMonth - i, 1);
+      monthsToInclude.push({ year: d.getFullYear(), month: d.getMonth() });
+    }
+
+    // --- Prepare grouped data with total working days ---
+    const grouped = {};
+    monthsToInclude.forEach(({ year, month }) => {
+      const label = `${new Date(year, month).toLocaleString("default", {
+        month: "long",
+      })} ${year}`;
+
+      grouped[label] = {
+        year,
+        month,
+        totalWorkingDays: getWorkingDaysInMonth(year, month, holidays),
+        leaveDays: 0,
+        leaveDetails: [],
+      };
+    });
+
+    // --- Accumulate leaveDays and leaveDetails per month ---
+    employee.leaveHistory.forEach((leave) => {
+      const createdAt = new Date(leave.createdAt);
+      const year = createdAt.getFullYear();
+      const month = createdAt.getMonth();
+
+      const label = `${new Date(year, month).toLocaleString("default", {
+        month: "long",
+      })} ${year}`;
+
+      if (grouped[label]) {
+        grouped[label].leaveDays += leave.numberOfDays || 0;
+        grouped[label].leaveDetails.push(
+          `${leave.startDate?.slice(0, 10)} to ${leave.endDate?.slice(
+            0,
+            10
+          )} (${leave.reason || "N/A"})`
+        );
+      }
+    });
+
+    // --- Prepare Excel workbook ---
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Last 4 Months Summary");
+
+    // Add header
+    worksheet.addRow(["Field", "Value"]);
+    worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    worksheet.getRow(1).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF007ACC" },
+    };
+
+    // Add employee info
+    worksheet.addRow([]);
+    worksheet.addRow(["Employee Name", employee.name || "N/A"]);
+    worksheet.addRow([
+      "Report Period",
+      `${monthsToInclude[monthsToInclude.length - 1].month + 1}/${
+        monthsToInclude[monthsToInclude.length - 1].year
+      } - ${latestMonth + 1}/${latestYear}`,
+    ]);
+
+    // --- Add monthly breakdown for last 4 months ---
+    monthsToInclude
+      .map(({ year, month }) => {
+        return `${new Date(year, month).toLocaleString("default", {
+          month: "long",
+        })} ${year}`;
+      })
+      .forEach((monthLabel) => {
+        const info = grouped[monthLabel];
+        if (!info) return;
+
+        const workedDays = Math.max(info.totalWorkingDays - info.leaveDays, 0);
+
+        worksheet.addRow([]);
+        worksheet.addRow(["Month", monthLabel]);
+        worksheet.addRow(["Total Working Days", info.totalWorkingDays]);
+        worksheet.addRow([
+          "Leave Details",
+          info.leaveDetails.length ? info.leaveDetails.join("; ") : "None",
+        ]);
+        worksheet.addRow(["Leave Days", info.leaveDays]);
+        worksheet.addRow(["Worked Days", workedDays]);
+        worksheet.addRow(["WFH", 0]);
+        worksheet.addRow(["On Duty", 0]);
+      });
+
+    // Auto column width
+    worksheet.columns.forEach((col) => (col.width = 25));
+
+    // Export file
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    saveAs(blob, `${employee.name || "Employee"}_Last4Months_Report.xlsx`);
+  };
+
+  // years
+
+  // Utility: Count working days (Mon–Fri) in a month excluding holidays
+  function getWorkingDaysInMonth(year, month, holidays = []) {
+    let workingDays = 0;
+    const date = new Date(year, month, 1);
+
+    while (date.getMonth() === month) {
+      const day = date.getDay();
+      const dateStr = date.toISOString().slice(0, 10);
+      if (day !== 0 && day !== 6 && !holidays.includes(dateStr)) {
+        workingDays++;
+      }
+      date.setDate(date.getDate() + 1);
+    }
+
+    return workingDays;
+  }
+
+  const handleExportYearly = async (
+    employee,
+    selectedYear = new Date().getFullYear()
+  ) => {
+    if (!employee?.leaveHistory?.length) return;
+
+    // --- Group leaves by month (Jan–Dec) ---
+    const grouped = {};
+
+    employee.leaveHistory.forEach((leave) => {
+      const createdAt = new Date(leave.createdAt);
+      const year = createdAt.getFullYear();
+      const month = createdAt.getMonth();
+
+      // Only include leaves for the selected year
+      if (year === selectedYear) {
+        const label = `${new Date(year, month).toLocaleString("default", {
+          month: "long",
+        })} ${year}`;
+
+        if (!grouped[label]) {
+          grouped[label] = {
+            year,
+            month,
+            totalWorkingDays: getWorkingDaysInMonth(year, month, holidays),
+            leaveDays: 0,
+            leaveDetails: [],
+          };
+        }
+
+        grouped[label].leaveDays += leave.numberOfDays || 0;
+        grouped[label].leaveDetails.push(
+          `${leave.startDate?.slice(0, 10)} to ${leave.endDate?.slice(
+            0,
+            10
+          )} (${leave.reason || "N/A"})`
+        );
+      }
+    });
+
+    // --- Prepare Excel workbook ---
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet(`${selectedYear} Leave Report`);
+
+    // Add header
+    worksheet.addRow(["Field", "Value"]);
+    worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    worksheet.getRow(1).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF007ACC" },
+    };
+
+    // --- Add employee info ---
+    worksheet.addRow([]);
+    worksheet.addRow(["Employee Name", employee.name || "N/A"]);
+    worksheet.addRow(["Year", selectedYear]);
+
+    // --- Add monthly breakdown (Jan–Dec) ---
+    for (let month = 0; month < 12; month++) {
+      const label = `${new Date(selectedYear, month).toLocaleString("default", {
+        month: "long",
+      })} ${selectedYear}`;
+
+      const info = grouped[label] || {
+        totalWorkingDays: getWorkingDaysInMonth(selectedYear, month, holidays),
+        leaveDays: 0,
+        leaveDetails: [],
+      };
+
+      const workedDays = Math.max(info.totalWorkingDays - info.leaveDays, 0);
+
+      worksheet.addRow([]);
+      worksheet.addRow(["Month", label]);
+      worksheet.addRow(["Total Working Days", info.totalWorkingDays]);
+      worksheet.addRow([
+        "Leave Details",
+        info.leaveDetails.length ? info.leaveDetails.join("; ") : "None",
+      ]);
+      worksheet.addRow(["Leave Days", info.leaveDays]);
+      worksheet.addRow(["Worked Days", workedDays]);
+      worksheet.addRow(["WFH", 0]);
+      worksheet.addRow(["On Duty", 0]);
+    }
+
+    // Auto column width
+    worksheet.columns.forEach((col) => (col.width = 25));
+
+    // --- Generate and download file ---
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    saveAs(
+      blob,
+      `${employee.name || "Employee"}_${selectedYear}_Leave_Report.xlsx`
+    );
   };
 
   return (
@@ -258,6 +654,32 @@ const EmployeeList = () => {
                             onClick={() => handleCalendarView(emp)}
                           >
                             <CalendarTodayIcon />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Export Monthly">
+                          <IconButton
+                            color="primary"
+                            onClick={() => handleExportToExcel(emp)}
+                          >
+                            <FileDownloadIcon />
+                          </IconButton>
+                        </Tooltip>
+
+                        <Tooltip title="Export Quarterly">
+                          <IconButton
+                            color="primary"
+                            onClick={() => handleExportQuarterly(emp)}
+                          >
+                            <FileDownloadIcon />
+                          </IconButton>
+                        </Tooltip>
+
+                        <Tooltip title="Export Yearly">
+                          <IconButton
+                            color="primary"
+                            onClick={() => handleExportYearly(emp)}
+                          >
+                            <FileDownloadIcon />
                           </IconButton>
                         </Tooltip>
                       </Stack>

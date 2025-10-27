@@ -5,7 +5,7 @@ const Leave = require("../models/leave");
 // Function to validate the leave data
 const validateLeaveData = (data) => {
   const rules = {
-    leaveType: "required|in:casual,sick",
+    leaveType: "required|in:casual,sick,wfh,on_duty",
     startDate: "required|date",
     endDate: "required|date|after_or_equal:startDate",
     reason: "required|string",
@@ -157,13 +157,11 @@ const updateLeaveStatus = async (req, res) => {
       return res.status(404).json({ error: "Leave request not found" });
     }
 
-    leave.status = status;
-    leave.adminNote = adminNote || "";
-    leave.reviewedBy = req.user.userId;
-    leave.reviewedOn = new Date();
-
     // If approved, update leave balance
-    if (status === "approved") {
+    if (
+      status === "approved" &&
+      !["wfh", "on_duty"].includes(leave.leaveType)
+    ) {
       const user = await User.findById(leave.user._id);
 
       let days = 1;
@@ -186,7 +184,10 @@ const updateLeaveStatus = async (req, res) => {
       await user.save();
     }
 
-    if (status === "cancelled") {
+    if (
+      status === "cancelled" &&
+      !["wfh", "on_duty"].includes(leave.leaveType)
+    ) {
       const user = await User.findById(leave.user._id);
 
       let days = 1;
@@ -209,6 +210,29 @@ const updateLeaveStatus = async (req, res) => {
       await user.save();
     }
 
+    // track wfh and on_duty requests separately
+    if (status === "approved" && ["wfh", "on_duty"].includes(leave.leaveType)) {
+      const user = await User.findById(leave.user._id);
+
+      let days = 1;
+
+      if (leave.leaveDuration === "half-day") {
+        days = 0.5;
+      } else {
+        const start = new Date(leave.startDate);
+        const end = new Date(leave.endDate);
+        // days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // inclusive
+        days = countWorkingDays(start, end);
+        leave.numberOfDays = days;
+      }
+
+      await user.save();
+    }
+
+    leave.status = status;
+    leave.adminNote = adminNote || "";
+    leave.reviewedBy = req.user.userId;
+    leave.reviewedOn = new Date();
     await leave.save();
 
     res.status(200).json({ message: `Leave ${status} successfully`, leave });
