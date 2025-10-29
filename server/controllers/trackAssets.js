@@ -1,11 +1,12 @@
 const { ObjectId } = require("mongodb");
 const { getDb } = require("../lib/mongo");
+const User = require("../models/user");
 
 // submit new asset information
 const submitAssetInformation = async (req, res) => {
   try {
     const db = await getDb(); // Get MongoDB connection
-    const user = req.user; // Assume middleware has added authenticated user
+    const user = req.user; // Authenticated user added by middleware
     const assetsCollection = db.collection("assets");
 
     // Parse asset info from request body
@@ -27,6 +28,15 @@ const submitAssetInformation = async (req, res) => {
       return res.status(400).json({ error: "Name and type are required." });
     }
 
+    // Fetch assigned user info (if provided)
+    let assignedUser = null;
+    if (assignedTo) {
+      assignedUser = await User.findById(assignedTo).select("-password");
+      if (!assignedUser) {
+        return res.status(404).json({ error: "Assigned user not found." });
+      }
+    }
+
     // Build asset document
     const newAsset = {
       name,
@@ -37,12 +47,12 @@ const submitAssetInformation = async (req, res) => {
       location: location || "",
       value: value ? Number(value) : 0,
       status: status || "Active",
-      assignedTo: assignedTo ? new ObjectId(assignedTo) : null,
+      assignedTo: assignedUser ? assignedUser.employeeCode : null,
       tags: Array.isArray(tags) ? tags : [],
       isDeleted: false,
       createdAt: new Date(),
       updatedAt: new Date(),
-      createdBy: user?._id ? new ObjectId(user._id) : null, // Optional: track who submitted it
+      createdBy: user?._id ? new ObjectId(user._id) : null,
     };
 
     // Insert into MongoDB
