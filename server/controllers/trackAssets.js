@@ -3,13 +3,80 @@ const { getDb } = require("../lib/mongo");
 const User = require("../models/user");
 
 // submit new asset information
+// const submitAssetInformation = async (req, res) => {
+//   try {
+//     const db = await getDb(); // Get MongoDB connection
+//     const user = req.user; // Authenticated user added by middleware
+//     const assetsCollection = db.collection("assets");
+
+//     // Parse asset info from request body
+//     const {
+//       name,
+//       type,
+//       description,
+//       serialNumber,
+//       purchaseDate,
+//       location,
+//       value,
+//       status,
+//       assignedTo,
+//       tags,
+//     } = req.body;
+
+//     // Validate required fields
+//     if (!name || !type) {
+//       return res.status(400).json({ error: "Name and type are required." });
+//     }
+
+//     // Fetch assigned user info (if provided)
+//     let assignedUser = null;
+//     if (assignedTo) {
+//       assignedUser = await User.findById(assignedTo).select("-password");
+//       if (!assignedUser) {
+//         return res.status(404).json({ error: "Assigned user not found." });
+//       }
+//     }
+
+//     // Build asset document
+//     const newAsset = {
+//       name,
+//       type,
+//       description: description || "",
+//       serialNumber: serialNumber || null,
+//       purchaseDate: purchaseDate ? new Date(purchaseDate) : null,
+//       location: location || "",
+//       value: value ? Number(value) : 0,
+//       status: status || "Active",
+//       assignedTo: assignedUser ? assignedUser.employeeCode : null,
+//       tags: Array.isArray(tags) ? tags : [],
+//       isDeleted: false,
+//       createdAt: new Date(),
+//       updatedAt: new Date(),
+//       createdBy: user?._id ? new ObjectId(user._id) : null,
+//     };
+
+//     // Insert into MongoDB
+//     const result = await assetsCollection.insertOne(newAsset);
+
+//     res.status(201).json({
+//       message: "Asset information submitted successfully",
+//       assetId: result.insertedId,
+//     });
+//   } catch (error) {
+//     console.error("Asset submission failed:", error);
+//     res.status(500).json({
+//       error: "Failed to submit asset information",
+//       details: error.message,
+//     });
+//   }
+// };
+
 const submitAssetInformation = async (req, res) => {
   try {
-    const db = await getDb(); // Get MongoDB connection
-    const user = req.user; // Authenticated user added by middleware
+    const user = req.user;
+    const db = await getDb();
     const assetsCollection = db.collection("assets");
 
-    // Parse asset info from request body
     const {
       name,
       type,
@@ -19,25 +86,24 @@ const submitAssetInformation = async (req, res) => {
       location,
       value,
       status,
-      assignedTo,
+      assignedTo, // employeeCode
       tags,
     } = req.body;
 
-    // Validate required fields
     if (!name || !type) {
       return res.status(400).json({ error: "Name and type are required." });
     }
 
-    // Fetch assigned user info (if provided)
     let assignedUser = null;
     if (assignedTo) {
-      assignedUser = await User.findById(assignedTo).select("-password");
+      assignedUser = await User.findOne({ employeeCode: assignedTo }).select(
+        "-password"
+      );
       if (!assignedUser) {
         return res.status(404).json({ error: "Assigned user not found." });
       }
     }
 
-    // Build asset document
     const newAsset = {
       name,
       type,
@@ -49,25 +115,21 @@ const submitAssetInformation = async (req, res) => {
       status: status || "Active",
       assignedTo: assignedUser ? assignedUser.employeeCode : null,
       tags: Array.isArray(tags) ? tags : [],
-      isDeleted: false,
+      createdBy: user?._id || null,
       createdAt: new Date(),
       updatedAt: new Date(),
-      createdBy: user?._id ? new ObjectId(user._id) : null,
+      isDeleted: false,
     };
 
-    // Insert into MongoDB
     const result = await assetsCollection.insertOne(newAsset);
 
     res.status(201).json({
-      message: "Asset information submitted successfully",
+      message: "Asset saved successfully",
       assetId: result.insertedId,
     });
   } catch (error) {
     console.error("Asset submission failed:", error);
-    res.status(500).json({
-      error: "Failed to submit asset information",
-      details: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 };
 
