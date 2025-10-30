@@ -128,7 +128,7 @@ const updateAssetById = async (req, res) => {
     const updateFields = { ...req.body, updatedAt: new Date() };
 
     if (updateFields.assignedTo) {
-      updateFields.assignedTo = new ObjectId(updateFields.assignedTo);
+      updateFields.assignedTo = updateFields.assignedTo;
     }
 
     if (updateFields.purchaseDate) {

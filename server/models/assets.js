@@ -54,8 +54,8 @@ const assetSchema = new mongoose.Schema({
   },
 
   assignedTo: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User", // assuming you have a User model
+    type: String,
+    ref: "User",
     default: null,
   },
 
