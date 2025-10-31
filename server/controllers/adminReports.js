@@ -30,7 +30,7 @@ const countWorkingDays = (start, end) => {
 
   while (current <= end) {
     const day = current.getDay();
-    const isWeekend = day === 0 || day === 6; // Sunday or Saturday
+    const isWeekend = day === 0 || day === 6;
     const isHoliday = holidays.some(
       (h) => new Date(h).toDateString() === current.toDateString()
     );
@@ -65,7 +65,6 @@ const exportLeaveReport = async (req, res) => {
   try {
     const { employeeId, year, month } = req.body;
 
-    // ✅ Validate request
     const rules = {
       year: "required|integer|min:2020|max:2030",
       month: "integer|min:1|max:12",
@@ -85,7 +84,18 @@ const exportLeaveReport = async (req, res) => {
       ? new Date(year, month, 0, 23, 59, 59)
       : new Date(year, 11, 31, 23, 59, 59);
 
-    // ✅ Query filter
+    // ✅ Fetch all active users (excluding admin)
+    let userFilter = { employeeCode: { $ne: "admin1234" } };
+    if (employeeId && employeeId !== "all") {
+      userFilter = { _id: employeeId }; // allow specific user even if admin (optional)
+    }
+
+    const users = await User.find(
+      userFilter,
+      "name employeeCode department designation"
+    );
+
+    // ✅ Fetch leaves within date range
     const filter = {
       startDate: { $lte: endDate },
       endDate: { $gte: startDate },
@@ -93,14 +103,9 @@ const exportLeaveReport = async (req, res) => {
     };
     if (employeeId && employeeId !== "all") filter.user = employeeId;
 
-    // ✅ Fetch data
     const leaves = await Leave.find(filter)
       .populate("user", "name employeeCode department designation")
       .sort({ startDate: 1 });
-
-    if (!leaves.length) {
-      return res.status(404).json({ message: "No records found" });
-    }
 
     // ✅ Prepare export folder
     const exportDir = path.join(__dirname, "../../exports");
@@ -139,11 +144,13 @@ const exportLeaveReport = async (req, res) => {
       }
     }
 
-    // ✅ Group by employee
+    // ✅ Group leaves by employee
     const grouped = {};
     for (const leave of leaves) {
-      const userId = leave.user._id.toString();
+      // skip admin leaves if any (extra safety)
+      if (leave.user?.employeeCode === "admin1234") continue;
 
+      const userId = leave.user._id.toString();
       if (!grouped[userId]) {
         grouped[userId] = {
           employee: leave.user.name,
@@ -163,18 +170,14 @@ const exportLeaveReport = async (req, res) => {
       }
 
       const days = leave.numberOfDays || 0;
-
-      // ✅ Categorize leave types
       if (["casual", "sick", "earned", "leave"].includes(leave.leaveType))
         grouped[userId].leavesTaken += days;
       if (leave.leaveType === "wfh") grouped[userId].wfh += days;
       if (leave.leaveType === "on_duty") grouped[userId].onDuty += days;
 
-      // ✅ Build readable comment: include date + leaveType
       const dateLabel = formatDateRange(leave.startDate, leave.endDate);
       const leaveType =
         leave.leaveType.charAt(0).toUpperCase() + leave.leaveType.slice(1);
-
       const commentParts = [`[${dateLabel} | ${leaveType}]`];
       if (leave.reason) commentParts.push(`Reason: ${leave.reason}`);
       if (leave.adminNote) commentParts.push(`Admin Note: ${leave.adminNote}`);
@@ -182,9 +185,25 @@ const exportLeaveReport = async (req, res) => {
       grouped[userId].comments.push(commentParts.join(" | "));
     }
 
-    // ✅ Write rows
-    for (const id in grouped) {
-      const data = grouped[id];
+    // ✅ Add ALL employees (even with no leaves)
+    for (const user of users) {
+      const userId = user._id.toString();
+      const data = grouped[userId] || {
+        employee: user.name,
+        employeeCode: user.employeeCode,
+        year,
+        month: month
+          ? new Date(year, month - 1).toLocaleString("default", {
+              month: "long",
+            })
+          : "All Months",
+        workingDays: totalWorkingDays,
+        leavesTaken: 0,
+        wfh: 0,
+        onDuty: 0,
+        comments: ["No leaves taken"],
+      };
+
       const daysWorked = Math.max(data.workingDays - data.leavesTaken, 0);
 
       sheet.addRow({
@@ -194,13 +213,12 @@ const exportLeaveReport = async (req, res) => {
         month: data.month,
         workingDays: data.workingDays,
         daysWorked,
-        leavesTaken: data.leavesTaken || "",
-        wfh: data.wfh || "",
-        onDuty: data.onDuty || "",
+        leavesTaken: data.leavesTaken || 0,
+        wfh: data.wfh || 0,
+        onDuty: data.onDuty || 0,
         comments: data.comments[0] || "",
       });
 
-      // add subsequent comments as separate rows
       for (let i = 1; i < data.comments.length; i++) {
         sheet.addRow({
           employee: "",
@@ -217,8 +235,32 @@ const exportLeaveReport = async (req, res) => {
       }
     }
 
-    // ✅ Style sheet
-    sheet.getRow(1).font = { bold: true };
+    // ✅ Style the header row for better spacing and readability
+    const headerRow = sheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+    headerRow.alignment = {
+      vertical: "middle",
+      horizontal: "center",
+      wrapText: true,
+    };
+    headerRow.height = 36; // Increased height for breathing space
+
+    // Set background color and border for all header cells
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "4472C4" }, // Excel-style blue
+      };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFBFBFBF" } },
+        left: { style: "thin", color: { argb: "FFBFBFBF" } },
+        bottom: { style: "thin", color: { argb: "FFBFBFBF" } },
+        right: { style: "thin", color: { argb: "FFBFBFBF" } },
+      };
+    });
+
+    // ✅ Apply alignment to all columns
     sheet.columns.forEach((col) => {
       col.alignment = {
         vertical: "middle",
@@ -227,17 +269,24 @@ const exportLeaveReport = async (req, res) => {
       };
     });
 
-    // ✅ Save and send
+    // ✅ Optional: Auto-fit column widths based on content
+    sheet.columns.forEach((column) => {
+      let maxLength = 0;
+      column.eachCell({ includeEmpty: true }, (cell) => {
+        const columnLength = cell.value ? cell.value.toString().length : 0;
+        if (columnLength > maxLength) maxLength = columnLength;
+      });
+      column.width = maxLength < 15 ? 15 : maxLength + 5; // Adjusted width dynamically
+    });
+
     const fileName = `Leave_Report_${year}_${month || "All"}.xlsx`;
     const filePath = path.join(exportDir, fileName);
     await workbook.xlsx.writeFile(filePath);
 
     res.download(filePath, fileName, (err) => {
-      if (err) console.error("Download error:", err);
-      fs.unlink(filePath, () => {}); // cleanup
+      if (err) fs.unlink(filePath, () => {});
     });
   } catch (error) {
-    console.error("Error exporting Excel report:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };

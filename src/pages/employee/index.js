@@ -1,4 +1,3 @@
-// app/admin/layout.tsx
 "use client";
 
 import { Alert, Snackbar } from "@mui/material";
@@ -21,19 +20,14 @@ import KeyIcon from "@mui/icons-material/Key";
 import Link from "next/link";
 import LogoutIcon from "@mui/icons-material/Logout";
 import axiosInstance from "@/utils/helpers";
+import { usePathname } from "next/navigation"; // ✅ detect current route
 
 export default function EmployeeLayout({ children }) {
-  const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-    window.location.href = "/";
-  };
-
+  const pathname = usePathname(); // ✅ get current route
   const [name, setName] = useState("");
   const [anchorEl, setAnchorEl] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [userInitials, setUserInitials] = useState("");
-  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [snackbarOpen, setSnackbarOpen] = useState(false);
@@ -41,72 +35,56 @@ export default function EmployeeLayout({ children }) {
   const [snackbarSeverity, setSnackbarSeverity] = useState("success");
 
   useEffect(() => {
-    // Only runs on the client
     const user = JSON.parse(localStorage.getItem("user"));
     if (user?.name) {
       setName(user.name);
       const nameParts = user.name.split(" ");
-      let initials = "";
-      if (nameParts.length >= 2) {
-        initials = nameParts[0][0] + nameParts[nameParts.length - 1][0];
-      } else if (nameParts.length === 1) {
-        initials = nameParts[0][0];
-      }
+      const initials =
+        nameParts.length >= 2
+          ? nameParts[0][0] + nameParts[nameParts.length - 1][0]
+          : nameParts[0][0];
       setUserInitials(initials.toUpperCase());
     }
   }, []);
 
-  const handleAvatarClick = (event) => {
-    setAnchorEl(event.currentTarget);
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    window.location.href = "/";
   };
 
-  const handleCloseMenu = () => {
-    setAnchorEl(null);
-  };
-
+  const handleAvatarClick = (event) => setAnchorEl(event.currentTarget);
+  const handleCloseMenu = () => setAnchorEl(null);
   const handleOpenModal = () => {
     handleCloseMenu();
     setIsModalOpen(true);
   };
-
   const handleCloseModal = () => {
     setIsModalOpen(false);
-    setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
   };
 
-  const handleChangePassword = async (e) => {
+  const handleChangePassword = async () => {
     try {
       if (!newPassword || !confirmPassword) {
         alert("All fields are required");
         return;
       }
-
       if (newPassword !== confirmPassword) {
-        alert("New passwords doesn't match");
+        alert("New passwords don't match");
         return;
       }
-      if (newPassword.length < 8 && confirmPassword.length < 8) {
-        alert("Password must be atleast 8 characters");
+      if (newPassword.length < 8) {
+        alert("Password must be at least 8 characters");
         return;
       }
+
       const token = localStorage.getItem("token");
-
-      let password = {
-        password: newPassword,
-      };
-
-      const res = await axiosInstance.put(
+      await axiosInstance.put(
         "/update-password",
-        {
-          password,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        { password: newPassword },
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       setSnackbarSeverity("success");
@@ -115,7 +93,9 @@ export default function EmployeeLayout({ children }) {
       handleLogout();
     } catch (err) {
       console.error(err);
-    } finally {
+      setSnackbarSeverity("error");
+      setSnackbarMessage("Failed to update password!");
+      setSnackbarOpen(true);
     }
   };
 
@@ -130,6 +110,13 @@ export default function EmployeeLayout({ children }) {
     p: 4,
     borderRadius: 2,
   };
+
+  // ✅ Navigation links
+  const navLinks = [
+    { label: "Home", href: "/main" },
+    { label: "Details", href: "/employee/employeeDetail" },
+    { label: "Leave Request", href: "/employee/requestLeave" },
+  ];
 
   return (
     <Box
@@ -146,30 +133,34 @@ export default function EmployeeLayout({ children }) {
             Hi {name}, Welcome
           </Typography>
 
-           <Button
-            color="inherit"
-            component={Link}
-            href="/main"
-          >
-            Home
-          </Button>
+          {/* ✅ Render nav buttons with active highlight */}
+          {navLinks.map((link) => {
+            const isActive = pathname === link.href;
+            return (
+              <Button
+                key={link.href}
+                color="inherit"
+                component={Link}
+                href={link.href}
+                sx={{
+                  mx: 0.5,
+                  fontWeight: isActive ? "bold" : "normal",
+                  color: isActive ? "#fff" : "#e0e0e0",
+                  backgroundColor: isActive
+                    ? "rgba(255,255,255,0.2)"
+                    : "transparent",
+                  borderBottom: isActive ? "2px solid #fff" : "none",
+                  "&:hover": {
+                    backgroundColor: "rgba(255,255,255,0.25)",
+                  },
+                }}
+              >
+                {link.label}
+              </Button>
+            );
+          })}
 
-          <Button
-            color="inherit"
-            component={Link}
-            href="/employee/employeeDetail"
-          >
-            Details
-          </Button>
-
-          <Button
-            color="inherit"
-            component={Link}
-            href="/employee/requestLeave"
-          >
-            Leave Request
-          </Button>
-
+          {/* ✅ Avatar Menu */}
           <Avatar
             sx={{
               bgcolor: "#e0e0e0",
@@ -194,41 +185,28 @@ export default function EmployeeLayout({ children }) {
               horizontal: "right",
             }}
           >
-            <MenuItem
-              onClick={handleOpenModal}
-              sx={{ display: "flex", alignItems: "center" }}
-            >
+            <MenuItem onClick={handleOpenModal}>
               <KeyIcon sx={{ mr: 1, fontSize: 20 }} />
               <Typography>Change password</Typography>
             </MenuItem>
-            <MenuItem
-              onClick={handleLogout}
-              sx={{ display: "flex", alignItems: "center" }}
-            >
+            <MenuItem onClick={handleLogout}>
               <LogoutIcon sx={{ mr: 1, fontSize: 20 }} />
               <Typography>Logout</Typography>
             </MenuItem>
           </Menu>
         </Toolbar>
       </AppBar>
-      <Modal
-        open={isModalOpen}
-        onClose={handleCloseModal}
-        aria-labelledby="change-password-modal"
-      >
+
+      {/* ✅ Change Password Modal */}
+      <Modal open={isModalOpen} onClose={handleCloseModal}>
         <Box sx={modalStyle}>
-          <Typography
-            id="modal-title"
-            variant="h6"
-            component="h2"
-            sx={{ mb: 3 }}
-          >
+          <Typography variant="h6" sx={{ mb: 3 }}>
             Change password
           </Typography>
 
           <TextField
             label="New password"
-            type="text"
+            type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             fullWidth
@@ -237,7 +215,7 @@ export default function EmployeeLayout({ children }) {
           />
           <TextField
             label="Confirm new password"
-            type="text"
+            type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             fullWidth
@@ -255,28 +233,18 @@ export default function EmployeeLayout({ children }) {
         </Box>
       </Modal>
 
-      <Box
-        sx={{
-          flexGrow: 1,
-          overflowY: "auto",
-          p: 2,
-        }}
-      >
-        {children}
-      </Box>
+      {/* ✅ Page Content */}
+      <Box sx={{ flexGrow: 1, overflowY: "auto", p: 2 }}>{children}</Box>
 
+      {/* ✅ Snackbar for feedback */}
       <Snackbar
         open={snackbarOpen}
         autoHideDuration={4000}
-        onClose={() => {
-          setSnackbarOpen(false);
-        }}
+        onClose={() => setSnackbarOpen(false)}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
         <Alert
-          onClose={() => {
-            setSnackbarOpen(false);
-          }}
+          onClose={() => setSnackbarOpen(false)}
           severity={snackbarSeverity}
           sx={{ width: "100%" }}
         >

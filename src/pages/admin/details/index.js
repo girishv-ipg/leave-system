@@ -264,8 +264,6 @@ const EmployeeList = () => {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
       });
-
-      console.log(response?.data?.data, "response");
       setEmployee(response.data.data);
     } catch (error) {
       console.error("Error fetching leave requests:", error);
@@ -332,7 +330,8 @@ const EmployeeList = () => {
           </Typography>
           <Typography>
             <b>Leave Taken:</b>{" "}
-            {Number(employee?.totalLeaveQuota) - Number(employee?.leaveBalance) || 0}
+            {Number(employee?.totalLeaveQuota) -
+              Number(employee?.leaveBalance) || 0}
           </Typography>
           <Typography>
             <b>Leave Balance:</b> {employee?.leaveBalance}

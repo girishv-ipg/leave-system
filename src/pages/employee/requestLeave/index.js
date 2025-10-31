@@ -70,7 +70,6 @@ const LeaveRequestForm = () => {
       }, 1000);
     } catch (err) {
       setSuccess("Error submitting leave. Try again.");
-      console.error(err);
     } finally {
       setSubmitting(false);
     }

@@ -18,9 +18,7 @@ const Main = () => {
       try {
         const user = JSON.parse(userData);
         userRole = user.role || "employee";
-      } catch (e) {
-        console.error("Error parsing user data:", e);
-      }
+      } catch (e) {}
     }
 
     if (
@@ -43,9 +41,7 @@ const Main = () => {
       try {
         const user = JSON.parse(userData);
         userRole = user.role || "employee";
-      } catch (e) {
-        console.error("Error parsing user data:", e);
-      }
+      } catch (e) {}
     }
 
     if (userRole === "admin" || userRole === "manager" || userRole === "hr") {
@@ -64,9 +60,7 @@ const Main = () => {
       try {
         const user = JSON.parse(userData);
         userRole = user.role || "employee";
-      } catch (e) {
-        console.log("Error parsing user data:", e);
-      }
+      } catch (e) {}
     }
     if (
       userRole === "admin" ||

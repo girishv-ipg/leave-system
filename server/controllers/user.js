@@ -73,7 +73,6 @@ const createUser = async (req, res) => {
       user: userWithoutPassword,
     });
   } catch (error) {
-    console.error("Registration error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
@@ -168,7 +167,6 @@ const updateUser = async (req, res) => {
       user: userWithoutPassword,
     });
   } catch (error) {
-    console.error("Update error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
@@ -188,7 +186,6 @@ const deleteUserById = async (req, res) => {
       data: user,
     });
   } catch (error) {
-    console.error("Error fetching employee leave history:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
@@ -197,23 +194,19 @@ const deleteUserById = async (req, res) => {
 const login = async (req, res) => {
   try {
     const { employeeCode, password } = req.body;
-    console.log("LOGIN BODY:", req.body);
 
     const rules = { employeeCode: "required", password: "required|min:8" };
     const validation = new Validator(req.body, rules);
     if (validation.fails()) {
-      console.log("VALIDATION ERR:", validation.errors.all());
       return res.status(400).json({ error: "Invalid input data" });
     }
 
     const user = await User.findOne({
       employeeCode: String(employeeCode).trim(),
     });
-    console.log("FOUND USER:", !!user, user?.employeeCode);
     if (!user) return res.status(401).json({ error: "User not found" });
 
     const passwordMatch = await bcrypt.compare(password, user.password);
-    console.log("BCRYPT OK:", passwordMatch);
     if (!passwordMatch)
       return res.status(401).json({ error: "Incorrect password" });
 
@@ -238,7 +231,6 @@ const login = async (req, res) => {
       .status(200)
       .json({ message: "Login successful", user: userWithoutPassword, token });
   } catch (error) {
-    console.error("Login error:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 };
@@ -281,7 +273,6 @@ const getAllEmployeesWithLeaveHistory = async (req, res) => {
       data: employeesWithLeaves,
     });
   } catch (error) {
-    console.error("Error fetching user leave history:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
@@ -312,7 +303,6 @@ const getEmployeeWithLeaveHistory = async (req, res) => {
       data: employeeWithLeaves,
     });
   } catch (error) {
-    console.error("Error fetching employee leave history:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
@@ -327,7 +317,6 @@ const getUserById = async (req, res) => {
       data: user,
     });
   } catch (error) {
-    console.error("Error fetching employee leave history:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
@@ -366,7 +355,6 @@ const updateUserPassword = async (req, res) => {
       message: "Password updated successfully",
     });
   } catch (error) {
-    console.error("Error updating password:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
@@ -381,7 +369,6 @@ const getAllEmployees = async (req, res) => {
       data: employees,
     });
   } catch (error) {
-    console.error("Error fetching employee list:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };

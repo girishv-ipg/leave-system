@@ -118,7 +118,6 @@ export default function BulkExpenseEntry() {
         // Clean up localStorage
         localStorage.removeItem("editExpense");
       } catch (error) {
-        console.error("Error parsing edit data:", error);
         localStorage.removeItem("editExpense");
       }
     }
@@ -244,7 +243,7 @@ export default function BulkExpenseEntry() {
             Authorization: `Bearer ${token}`,
             "Content-Type": "multipart/form-data",
           },
-          timeout: 30000 // 30 seconds timeout
+          timeout: 30000, // 30 seconds timeout
         }
       );
 
@@ -261,8 +260,6 @@ export default function BulkExpenseEntry() {
         setError(result.error || "Failed to update expense");
       }
     } catch (error) {
-      console.error("Update error:", error);
-
       if (error.response) {
         const status = error.response.status;
         const errorMessage =
@@ -317,8 +314,6 @@ export default function BulkExpenseEntry() {
 
       // Prepare expenses data without file data
       const expensesToSubmit = expenses.map((expense, index) => {
-        console.log(`Processing expense ${index + 1}:`, expense);
-
         const expenseData = {
           expenseType: expense.expenseType,
           amount: parseFloat(expense.amount),
@@ -331,10 +326,6 @@ export default function BulkExpenseEntry() {
 
         // Add file to FormData if present
         if (expense.file) {
-          console.log(
-            `Adding file for expense ${index + 1}:`,
-            expense.file.name
-          );
           formData.append("files", expense.file);
         }
 
@@ -344,17 +335,7 @@ export default function BulkExpenseEntry() {
       // Add expenses data as JSON string to FormData
       formData.append("expenses", JSON.stringify(expensesToSubmit));
 
-      console.log("Final expenses to submit:", expensesToSubmit);
-      console.log("Total expenses count:", expensesToSubmit.length);
       // Debug FormData contents
-      console.log("FormData entries:");
-      for (let [key, value] of formData.entries()) {
-        console.log(key, value);
-      }
-
-      // Or check if specific keys exist
-      console.log("Has expenses key:", formData.has("expenses"));
-      console.log("Has file_0 key:", formData.has("file_0"));
 
       // Make API call to submit bulk expenses using FormData
       const response = await axiosInstance.post(
@@ -386,8 +367,6 @@ export default function BulkExpenseEntry() {
         setError(result.error || "Failed to submit expenses");
       }
     } catch (error) {
-      console.error("Submit error:", error);
-
       // Handle axios error responses
       if (error.response) {
         // Server responded with error status
@@ -584,7 +563,7 @@ export default function BulkExpenseEntry() {
                 <Home />
               </IconButton>
               <IconButton
-                  sx={{
+                sx={{
                   transition: "all 0.2s ease",
                   "&:hover": {
                     color: "error.main",

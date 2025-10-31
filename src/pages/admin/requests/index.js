@@ -30,9 +30,7 @@ const Requests = () => {
         }
       );
       getLeaveRequests();
-    } catch (error) {
-      console.error("Error updating comment:", error);
-    }
+    } catch (error) {}
   };
 
   const getLeaveRequests = async () => {
@@ -45,11 +43,8 @@ const Requests = () => {
           },
         }
       );
-      console.log(response.data.data, "data");
       setLeaveRequests(response.data.data);
-    } catch (error) {
-      console.error("Error fetching leave requests:", error);
-    }
+    } catch (error) {}
   };
 
   useEffect(() => {

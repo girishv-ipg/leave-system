@@ -49,7 +49,6 @@ const Reports = () => {
       });
       setEmployees(response.data.data || []);
     } catch (error) {
-      console.error("Error fetching employees:", error);
       setSnackbar({
         open: true,
         message: "Failed to load employees",
@@ -121,7 +120,6 @@ const Reports = () => {
         severity: "success",
       });
     } catch (error) {
-      console.error("Error exporting report:", error);
       setSnackbar({
         open: true,
         message: "Failed to download report",
@@ -197,16 +195,20 @@ const Reports = () => {
             </FormControl>
 
             {/* 🗓 Month (optional) */}
-            <FormControl fullWidth>
-              <InputLabel>Month (optional)</InputLabel>
+            <FormControl fullWidth variant="outlined">
+              <InputLabel id="month-label">Month (optional)</InputLabel>
               <Select
+                labelId="month-label"
                 name="month"
                 label="Month (optional)"
-                value={form.month}
+                value={form.month ?? ""}
                 onChange={handleChange}
+                displayEmpty
               >
                 <MenuItem value="">
-                  <em>All Months</em>
+                  <Typography sx={{ color: "text.secondary" }}>
+                    All Months
+                  </Typography>
                 </MenuItem>
                 {months.map((month) => (
                   <MenuItem key={month.value} value={month.value}>

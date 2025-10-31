@@ -100,12 +100,8 @@ const EmployeeList = () => {
         },
       });
 
-      console.log(response.data.data);
-
       setEmployees(response.data.data);
-    } catch (error) {
-      console.error("Error fetching leave requests:", error);
-    }
+    } catch (error) {}
   };
 
   useEffect(() => {
@@ -166,8 +162,6 @@ const EmployeeList = () => {
   };
 
   const handleExportToExcel = async (employee) => {
-    console.log(employee.leaveHistory, "employee");
-
     // --- Parse month and year dynamically ---
     // Utility: Count weekdays (Mon–Fri) in a given month
     function getWorkingDaysInMonth(year, month) {

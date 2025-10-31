@@ -45,12 +45,8 @@ const EmployeeList = () => {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
       });
-
-      console.log(response?.data?.data, "response");
       setEmployee(response.data.data);
-    } catch (error) {
-      console.error("Error fetching leave requests:", error);
-    }
+    } catch (error) {}
   };
 
   useEffect(() => {
@@ -73,9 +69,7 @@ const EmployeeList = () => {
         }
       );
       getEmployees();
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) {}
   };
 
   const isFutureLeave = (startDate) => {
@@ -111,8 +105,6 @@ const EmployeeList = () => {
 
       current.setDate(current.getDate() + 1);
     }
-
-    console.log(count, "working days");
     return count;
   };
 
@@ -187,18 +179,6 @@ const EmployeeList = () => {
                   </TableCell>
 
                   <TableCell sx={{ textTransform: "capitalize" }}>
-                    {/* {leave?.status === "pending" ? (
-                      <Button
-                        onClick={() => {
-                          handleUpdateStatus(leave?._id);
-                        }}
-                      >
-                        Cancel Leave Request
-                      </Button>
-                    ) : (
-                      "--"
-                    )} */}
-
                     {leave.status === "pending" &&
                       isFutureLeave(leave.startDate) && (
                         <Button
@@ -218,12 +198,6 @@ const EmployeeList = () => {
                       >
                         Request Withdrawal
                       </Button>
-                    )}
-
-                    {!isFutureLeave(leave.startDate) && (
-                      <Typography variant="caption" color="gray">
-                        This leave has already started and cannot be modified.
-                      </Typography>
                     )}
                   </TableCell>
                 </TableRow>
