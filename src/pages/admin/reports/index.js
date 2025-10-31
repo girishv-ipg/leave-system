@@ -27,7 +27,7 @@ const Reports = () => {
   const [form, setForm] = useState({
     employeeId: "all",
     year: new Date().getFullYear(),
-    month: "",
+    month: "all",
   });
 
   const [snackbar, setSnackbar] = useState({
@@ -72,7 +72,7 @@ const Reports = () => {
         {
           employeeId: form.employeeId,
           year: form.year,
-          month: form.month || undefined,
+          month: form.month === "all" ? undefined : form.month,
         },
         {
           headers: {
@@ -108,7 +108,9 @@ const Reports = () => {
 
       link.setAttribute(
         "download",
-        `Leave_Report_${selectedEmployee}_${monthName}_${form.year}.xlsx`
+        `Leave_Report_${selectedEmployee}_${monthName ? monthName + "_" : ""}${
+          form.year
+        }.xlsx`
       );
       document.body.appendChild(link);
       link.click();
@@ -136,6 +138,7 @@ const Reports = () => {
 
   // Month options
   const months = [
+    { name: "All Months", value: "all" },
     { name: "January", value: 1 },
     { name: "February", value: 2 },
     { name: "March", value: 3 },
@@ -195,21 +198,17 @@ const Reports = () => {
             </FormControl>
 
             {/* 🗓 Month (optional) */}
+            {/* 🗓 Month (optional) */}
             <FormControl fullWidth variant="outlined">
               <InputLabel id="month-label">Month (optional)</InputLabel>
               <Select
                 labelId="month-label"
+                id="month-select"
                 name="month"
                 label="Month (optional)"
-                value={form.month ?? ""}
+                value={form.month}
                 onChange={handleChange}
-                displayEmpty
               >
-                <MenuItem value="">
-                  <Typography sx={{ color: "text.secondary" }}>
-                    All Months
-                  </Typography>
-                </MenuItem>
                 {months.map((month) => (
                   <MenuItem key={month.value} value={month.value}>
                     {month.name}
