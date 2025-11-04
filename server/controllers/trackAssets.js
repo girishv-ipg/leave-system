@@ -1,82 +1,12 @@
 const { ObjectId } = require("mongodb");
-const { getDb } = require("../lib/mongo");
+// const { getDb } = require("../lib/mongo");
+const Assets = require("../models/assets");
 const User = require("../models/user");
 
 // submit new asset information
-// const submitAssetInformation = async (req, res) => {
-//   try {
-//     const db = await getDb(); // Get MongoDB connection
-//     const user = req.user; // Authenticated user added by middleware
-//     const assetsCollection = db.collection("assets");
-
-//     // Parse asset info from request body
-//     const {
-//       name,
-//       type,
-//       description,
-//       serialNumber,
-//       purchaseDate,
-//       location,
-//       value,
-//       status,
-//       assignedTo,
-//       tags,
-//     } = req.body;
-
-//     // Validate required fields
-//     if (!name || !type) {
-//       return res.status(400).json({ error: "Name and type are required." });
-//     }
-
-//     // Fetch assigned user info (if provided)
-//     let assignedUser = null;
-//     if (assignedTo) {
-//       assignedUser = await User.findById(assignedTo).select("-password");
-//       if (!assignedUser) {
-//         return res.status(404).json({ error: "Assigned user not found." });
-//       }
-//     }
-
-//     // Build asset document
-//     const newAsset = {
-//       name,
-//       type,
-//       description: description || "",
-//       serialNumber: serialNumber || null,
-//       purchaseDate: purchaseDate ? new Date(purchaseDate) : null,
-//       location: location || "",
-//       value: value ? Number(value) : 0,
-//       status: status || "Active",
-//       assignedTo: assignedUser ? assignedUser.employeeCode : null,
-//       tags: Array.isArray(tags) ? tags : [],
-//       isDeleted: false,
-//       createdAt: new Date(),
-//       updatedAt: new Date(),
-//       createdBy: user?._id ? new ObjectId(user._id) : null,
-//     };
-
-//     // Insert into MongoDB
-//     const result = await assetsCollection.insertOne(newAsset);
-
-//     res.status(201).json({
-//       message: "Asset information submitted successfully",
-//       assetId: result.insertedId,
-//     });
-//   } catch (error) {
-//     console.error("Asset submission failed:", error);
-//     res.status(500).json({
-//       error: "Failed to submit asset information",
-//       details: error.message,
-//     });
-//   }
-// };
-
 const submitAssetInformation = async (req, res) => {
   try {
     const user = req.user;
-    const db = await getDb();
-    const assetsCollection = db.collection("assets");
-
     const {
       name,
       type,
@@ -121,11 +51,11 @@ const submitAssetInformation = async (req, res) => {
       isDeleted: false,
     };
 
-    const result = await assetsCollection.insertOne(newAsset);
+    const result = await Assets.create(newAsset);
 
     res.status(201).json({
       message: "Asset saved successfully",
-      assetId: result.insertedId,
+      assetId: result,
     });
   } catch (error) {
     console.error("Asset submission failed:", error);
@@ -136,33 +66,32 @@ const submitAssetInformation = async (req, res) => {
 // Get All Assets
 const getAllAssets = async (req, res) => {
   try {
-    const db = await getDb();
-    const assets = await db
-      .collection("assets")
-      .find({ isDeleted: { $ne: true } }) // filter out soft-deleted
-      .toArray();
+    const assets = await Assets.find({ isDeleted: { $ne: true } }).exec();
     res.status(200).json(assets);
   } catch (error) {
     console.error("Failed to fetch assets:", error);
-    res
-      .status(500)
-      .json({ error: "Failed to fetch assets", details: error.message });
+    res.status(500).json({
+      error: "Failed to fetch assets",
+      details: error.message,
+    });
   }
 };
 
 // READ ONE: Get Asset by ID
 const getAssetById = async (req, res) => {
   try {
-    const db = await getDb();
+    //   const db = await getDb();
     const assetId = req.params.id;
 
     if (!ObjectId.isValid(assetId)) {
       return res.status(400).json({ error: "Invalid asset ID" });
     }
 
-    const asset = await db
-      .collection("assets")
-      .findOne({ _id: new ObjectId(assetId), isDeleted: { $ne: true } });
+    // Find the asset by ID and check if it's not deleted
+    const asset = await Assets.findOne({
+      _id: assetId, // Mongoose will automatically handle ObjectId conversion
+      isDeleted: { $ne: true },
+    });
 
     if (!asset) {
       return res.status(404).json({ error: "Asset not found" });
@@ -180,7 +109,7 @@ const getAssetById = async (req, res) => {
 // UPDATE: Update Asset by ID
 const updateAssetById = async (req, res) => {
   try {
-    const db = await getDb();
+    // const db = await getDb();
     const assetId = req.params.id;
 
     if (!ObjectId.isValid(assetId)) {
@@ -197,21 +126,20 @@ const updateAssetById = async (req, res) => {
       updateFields.purchaseDate = new Date(updateFields.purchaseDate);
     }
 
-    const result = await db
-      .collection("assets")
-      .findOneAndUpdate(
-        { _id: new ObjectId(assetId) },
-        { $set: updateFields },
-        { returnDocument: "after" }
-      );
+    // Use Mongoose's findOneAndUpdate with the { new: true } option to return the updated document
+    const result = await Assets.findOneAndUpdate(
+      { _id: assetId, isDeleted: { $ne: true } }, // Ensure asset is not deleted
+      { $set: updateFields },
+      { new: true } // This returns the updated asset
+    );
 
-    if (!result.value) {
+    if (!result) {
       return res.status(404).json({ error: "Asset not found" });
     }
 
     res.status(200).json({
       message: "Asset updated successfully",
-      asset: result.value,
+      asset: result,
     });
   } catch (error) {
     console.error("Failed to update asset:", error);
@@ -223,25 +151,26 @@ const updateAssetById = async (req, res) => {
 
 const deleteAssetById = async (req, res) => {
   try {
-    const db = await getDb();
+    // const db = await getDb();
     const assetId = req.params.id;
 
     if (!ObjectId.isValid(assetId)) {
       return res.status(400).json({ error: "Invalid asset ID" });
     }
 
-    const result = await db.collection("assets").findOneAndUpdate(
-      { _id: new ObjectId(assetId), isDeleted: { $ne: true } },
+    // Soft delete the asset by marking it as isDeleted = true
+    const result = await Assets.findOneAndUpdate(
+      { _id: assetId, isDeleted: { $ne: true } }, // Only update if not already deleted
       {
         $set: {
           isDeleted: true,
           updatedAt: new Date(),
         },
       },
-      { returnDocument: "after" }
+      { new: true } // Return the updated asset
     );
 
-    if (!result.value) {
+    if (!result) {
       return res
         .status(404)
         .json({ error: "Asset not found or already deleted" });
@@ -249,7 +178,7 @@ const deleteAssetById = async (req, res) => {
 
     res.status(200).json({
       message: "Asset soft-deleted successfully",
-      asset: result.value,
+      asset: result,
     });
   } catch (error) {
     res

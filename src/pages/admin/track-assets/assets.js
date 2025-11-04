@@ -540,7 +540,7 @@ export default function AdminTrackAssetsPage() {
                   variant="body2"
                   sx={{ color: "text.secondary", mt: 0.5 }}
                 >
-                  Bulk manage company assets and export data
+                  Manage assets and export data
                 </Typography>
               </Box>
             </Box>

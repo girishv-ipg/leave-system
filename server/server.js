@@ -18,6 +18,7 @@ const {
   updateAssetById,
   deleteAssetById,
 } = require("./controllers/trackAssets");
+const Assets = require("./models/assets");
 
 const app = express();
 
@@ -108,6 +109,7 @@ app.listen(4000, async () => {
     // Force collection creation here
     await User.init();
     await Leave.init();
+    await Assets.init();
     console.log("User and Leave models initialized");
   } catch (err) {
     console.error("Error connecting to MongoDB:", err);
