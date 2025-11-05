@@ -61,7 +61,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useEffect, useMemo, useState } from "react";
+import { act, useEffect, useMemo, useState } from "react";
 
 import ExpenseFiltersMenu from "@/utils/ExpenseFiltersOthers";
 import axiosInstance from "@/utils/helpers";
@@ -111,25 +111,20 @@ export default function AdminExpenses() {
       "Expense Type": expense.expenseType,
       "Amount (₹)": parseFloat(expense.amount).toLocaleString(),
       Description: expense.description,
-      "Travel Start Date": expense.travelStartDate
-        ? new Date(expense.travelStartDate).toLocaleDateString()
+      "Travel Start Date": expense.startDate
+        ? new Date(expense.startDate).toLocaleDateString()
         : "",
-      "Travel End Date": expense.travelEndDate
-        ? new Date(expense.travelEndDate).toLocaleDateString()
+      "Travel End Date": expense.endDate
+        ? new Date(expense.endDate).toLocaleDateString()
         : "",
       Status: expense.status.charAt(0).toUpperCase() + expense.status.slice(1),
-      "Manager Status": expense.managerApproval?.status
-        ? expense.managerApproval.status.charAt(0).toUpperCase() +
-          expense.managerApproval.status.slice(1)
-        : "Pending",
-      "Finance Status": expense.financeApproval?.status
-        ? expense.financeApproval.status.charAt(0).toUpperCase() +
-          expense.financeApproval.status.slice(1)
-        : "Pending",
-      "Manager Comments": expense.managerApproval?.comments || "",
-      "Finance Comments": expense.financeApproval?.comments || "",
-      "Submitted Date": new Date(submission.submittedAt).toLocaleDateString(),
-      "Is Resubmitted": submission.isResubmitted ? "Yes" : "No",
+      "Approved By": expense.approvedBy?.name || "",
+      "Approved At": expense.approvedAt
+        ? new Date(expense.approvedAt).toLocaleDateString()
+        : "",
+      "Admin Comments": expense.adminComments || "",
+      "Submitted Date": new Date(submission.createdAt).toLocaleDateString(),
+      "Is Resubmitted": expense.isResubmitted ? "Yes" : "No",
       "Total Amount (₹)": parseFloat(submission.totalAmount).toLocaleString(),
     }));
 
@@ -147,10 +142,9 @@ export default function AdminExpenses() {
       { wch: 15 }, // Travel Start Date
       { wch: 15 }, // Travel End Date
       { wch: 12 }, // Status
-      { wch: 15 }, // Manager Status
-      { wch: 15 }, // Finance Status
-      { wch: 25 }, // Manager Comments
-      { wch: 25 }, // Finance Comments
+      { wch: 15 }, // Approved By
+      { wch: 15 }, // Approved At
+      { wch: 25 }, // Admin Comments
       { wch: 15 }, // Submitted Date
       { wch: 15 }, // Is Resubmitted
       { wch: 15 }, // Total Amount
@@ -176,50 +170,45 @@ export default function AdminExpenses() {
   // Download individual receipt function
   const downloadReceipt = async (expense) => {
     try {
-      const token = localStorage.getItem("token");
-      const response = await axiosInstance.get(
-        `/expenses/${expense._id}/fileData`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      const expenseData = response.data;
-
-      if (expenseData.fileData) {
-        const byteCharacters = atob(expenseData.fileData);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: expenseData.fileType });
-
-        // Create download link
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-
-        // Get file extension from fileType or fileName
-        const extension =
-          expenseData.fileName?.split(".").pop() ||
-          (expenseData.fileType?.includes("pdf")
-            ? "pdf"
-            : expenseData.fileType?.includes("image")
-            ? "jpg"
-            : "file");
-
-        link.download = `${expense.expenseType}_${expense.amount}_receipt.${extension}`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-        setSuccess(`Receipt downloaded successfully`);
-        setTimeout(() => setSuccess(""), 3000);
-      } else {
+      if (!expense.files || expense.files.length === 0) {
         setError("No receipt found for this expense");
+        return;
       }
+
+      const file = expense.files[0];
+
+      // Convert base64 to blob
+      const byteCharacters = atob(file.data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: file.type });
+
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+
+      // Get file extension from type or name
+      const extension =
+        file.name?.split(".").pop() ||
+        (file.type?.includes("pdf")
+          ? "pdf"
+          : file.type?.includes("image")
+          ? "jpg"
+          : "file");
+
+      link.download = `${expense.expenseType}_${expense.amount}_receipt.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      setSuccess(`Receipt downloaded successfully`);
+      setTimeout(() => setSuccess(""), 3000);
     } catch (error) {
       setError("Error downloading receipt: " + error.message);
     }
@@ -242,9 +231,7 @@ export default function AdminExpenses() {
 
     // Set initial tab based on user role
     if (user?.role === "finance") {
-      setActiveTab("manager_approved"); // Finance users start with "Pending Review" (manager_approved)
-    } else {
-      setActiveTab("all"); // Other users start with "All"
+      setActiveTab("managerApproved"); // Finance users start with "Pending Review" (managerApproved)
     }
   }, []);
 
@@ -253,7 +240,7 @@ export default function AdminExpenses() {
     if (currentUser?.role === "finance") {
       return [
         {
-          value: "manager_approved",
+          value: "managerApproved",
           label: "Pending Review", // Changed from "Manager Approved" to "Pending Review" for Finance
           icon: <Schedule />,
           color: "warning",
@@ -282,7 +269,7 @@ export default function AdminExpenses() {
           color: "warning",
         },
         {
-          value: "manager_approved",
+          value: "managerApproved",
           label: "Manager Approved",
           icon: <SupervisorAccount />,
           color: "info",
@@ -305,7 +292,7 @@ export default function AdminExpenses() {
 
   const statusTabs = getStatusTabs();
 
-  const fetchExpenses = async (status = "pending") => {
+  const fetchExpenses = async (status = "all") => {
     setLoading(true);
     setError("");
     try {
@@ -315,32 +302,37 @@ export default function AdminExpenses() {
         return;
       }
 
-      // Get filtered data for current tab
-      const response = await axiosInstance.get("/admin/expenses", {
+      // API call to new endpoint
+      const response = await axiosInstance.get("/expenses", {
         headers: { Authorization: `Bearer ${token}` },
-        params: {
-          status,
-          includeStats: "false",
-        },
       });
 
-      setBulkSubmissions(response.data.bulkSubmissions || []);
+      // Transform response to match frontend format
+      let expensesData = response?.data?.data || [];
 
-      // Only update stats if they're provided in the response
-      if (response.data.stats) {
-        setStats(response.data.stats);
+      if (status === "managerApproved") {
+        expensesData = expensesData.filter(
+          (exp) => exp.isManagerApproved && !exp.isFinanceApproved
+        );
       }
+
+      setBulkSubmissions(expensesData);
 
       // If we don't have all data yet, fetch it for stats calculation
       if (allExpensesData.length === 0) {
-        const allDataResponse = await axiosInstance.get("/admin/expenses", {
+        const allDataResponse = await axiosInstance.get("/expenses", {
           headers: { Authorization: `Bearer ${token}` },
-          params: {
-            status: "all",
-            includeStats: "false",
-          },
         });
-        setAllExpensesData(allDataResponse.data.bulkSubmissions || []);
+        const allTransformed = (allDataResponse?.data?.data || []).map(
+          (expense) => ({
+            _id: expense._id,
+            employeeId: expense.employeeId,
+            totalAmount: expense.totalAmount,
+            expenses: expense.expenses || [],
+            createdAt: expense.createdAt,
+          })
+        );
+        setAllExpensesData(allTransformed);
       }
     } catch (error) {
       console.error("Error fetching expenses:", error);
@@ -361,29 +353,27 @@ export default function AdminExpenses() {
 
       // Set default status based on user role
       const defaultStatus =
-        currentUser?.role === "finance" ? "manager_approved" : "pending";
+        currentUser?.role === "finance" ? "managerApproved" : "all";
 
       try {
-        // Get filtered data for default tab
-        const response = await axiosInstance.get("/admin/expenses", {
+        // Get all data
+        const response = await axiosInstance.get("/expenses", {
           headers: { Authorization: `Bearer ${token}` },
-          params: {
-            status: defaultStatus,
-            includeStats: "true", // Get stats on first load
-          },
         });
-        setBulkSubmissions(response.data.bulkSubmissions || []);
-        setStats(response.data.stats);
 
-        // Get all data for stats calculation
-        const allDataResponse = await axiosInstance.get("/admin/expenses", {
-          headers: { Authorization: `Bearer ${token}` },
-          params: {
-            status: "all",
-            includeStats: "false",
-          },
-        });
-        setAllExpensesData(allDataResponse.data.bulkSubmissions || []);
+        let expensesData = response?.data?.data || [];
+
+        setAllExpensesData(expensesData);
+
+        // Filter for default tab
+        let filteredData = expensesData;
+        if (defaultStatus === "managerApproved") {
+          filteredData = expensesData.filter(
+            (exp) => exp.isManagerApproved && !exp.isFinanceApproved
+          );
+        }
+
+        setBulkSubmissions(filteredData);
       } catch (error) {
         console.error("Error in initial fetch:", error);
         setError("Failed to fetch expenses");
@@ -417,24 +407,62 @@ export default function AdminExpenses() {
   };
 
   // Handle individual expense action
+  // Handle individual expense action (Finance only) or bulk action (Manager)
   const handleIndividualAction = async () => {
     try {
       const token = localStorage.getItem("token");
-      const endpoint =
-        currentUser?.role === "manager"
-          ? `/expenses/${actionDialog.expense._id}/manager-review`
-          : `/expenses/${actionDialog.expense._id}/finance-review`;
 
-      await axiosInstance.patch(
-        endpoint,
-        {
-          action: actionDialog.action,
-          comments: comments,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      // Find the submission
+      const submission =
+        actionDialog.submission ||
+        bulkSubmissions.find((sub) =>
+          sub.expenses.some((exp) => exp._id === actionDialog.expense?._id)
+        );
 
-      setSuccess(`Expense ${actionDialog.action} successfully!`);
+      if (!submission) {
+        setError("Submission not found");
+        return;
+      }
+
+      let endpoint;
+
+      // Manager: Bulk review (approve/reject entire submission)
+      if (currentUser?.role === "manager") {
+        endpoint = `/expenses/${submission._id}/manager-review`;
+
+        await axiosInstance.patch(
+          endpoint,
+          {
+            action: actionDialog.action,
+            adminComments: comments,
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      }
+      // Finance: Individual expense review
+      else if (currentUser?.role === "finance") {
+        if (!actionDialog.expense) {
+          setError("No expense selected");
+          return;
+        }
+
+        endpoint = `/expenses/${submission._id}/expense/${actionDialog.expense._id}/finance-review`;
+
+        await axiosInstance.patch(
+          endpoint,
+          {
+            action: actionDialog.action,
+            adminComments: comments,
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      }
+
+      const actionMessage =
+        actionDialog.action === "managerApproved"
+          ? "Manager approved"
+          : actionDialog.action;
+
       setActionDialog({
         open: false,
         expense: null,
@@ -442,96 +470,49 @@ export default function AdminExpenses() {
         action: "",
         type: "individual",
       });
-      setComments("");
 
-      // Refresh both filtered data and all data for stats
-      fetchExpenses(activeTab);
-
-      // Refresh all data for stats calculation
-      const allDataResponse = await axiosInstance.get("/admin/expenses", {
-        headers: { Authorization: `Bearer ${token}` },
-        params: {
-          status: "all",
-          includeStats: "false",
-        },
-      });
-      setAllExpensesData(allDataResponse.data.bulkSubmissions || []);
-
-      setTimeout(() => setSuccess(""), 3000);
-    } catch (error) {
-      setError(error.response?.data?.error || error.message);
-    }
-  };
-
-  // Handle bulk submission action
-  const handleBulkAction = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const endpoint =
-        currentUser?.role === "manager"
-          ? `/bulk-submissions/${actionDialog.submission._id}/manager-review`
-          : `/bulk-submissions/${actionDialog.submission._id}/finance-review`;
-
-      await axiosInstance.patch(
-        endpoint,
-        {
-          action: actionDialog.action,
-          comments: comments,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+      setSuccess(
+        `${
+          currentUser?.role === "manager" ? "Submission" : "Expense"
+        } ${actionMessage} successfully!`
       );
-
-      setSuccess(`Submission ${actionDialog.action} successfully!`);
-      setActionDialog({
-        open: false,
-        expense: null,
-        submission: null,
-        action: "",
-        type: "bulk",
-      });
       setComments("");
 
-      // Refresh both filtered data and all data for stats
+      // Refresh data
       fetchExpenses(activeTab);
 
       // Refresh all data for stats calculation
-      const allDataResponse = await axiosInstance.get("/admin/expenses", {
+      const allDataResponse = await axiosInstance.get("/expenses", {
         headers: { Authorization: `Bearer ${token}` },
-        params: {
-          status: "all",
-          includeStats: "false",
-        },
       });
-      setAllExpensesData(allDataResponse.data.bulkSubmissions || []);
+      setAllExpensesData(allDataResponse?.data?.data || []);
 
       setTimeout(() => setSuccess(""), 3000);
     } catch (error) {
+      console.error("Error in handleIndividualAction:", error);
       setError(error.response?.data?.error || error.message);
     }
   };
 
-  const viewDocument = async (id) => {
+  const viewDocument = async (expense) => {
     try {
-      const token = localStorage.getItem("token");
-      const response = await axiosInstance.get(`/expenses/${id}/fileData`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const expense = response.data;
-      if (expense.fileData) {
-        const byteCharacters = atob(expense.fileData);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: expense.fileType });
-
-        const url = URL.createObjectURL(blob);
-        window.open(url, "_blank");
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      } else {
+      if (!expense.files || expense.files.length === 0) {
         setError("No document found for this expense");
+        return;
       }
+
+      const file = expense.files[0];
+      const byteCharacters = atob(file.data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: file.type });
+
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) {
       setError("Error viewing document: " + error.message);
     }
@@ -541,8 +522,8 @@ export default function AdminExpenses() {
     const statuses = expenses.map((exp) => exp.status);
     if (statuses.every((status) => status === "approved")) return "approved";
     if (statuses.some((status) => status === "rejected")) return "rejected";
-    if (statuses.some((status) => status === "manager_approved"))
-      return "manager_approved";
+    if (statuses.some((status) => status === "managerApproved"))
+      return "managerApproved";
     return "pending";
   };
 
@@ -576,11 +557,11 @@ export default function AdminExpenses() {
           acc.pending += parseFloat(expense.amount) || 0;
         if (expense.status === "rejected")
           acc.rejected += parseFloat(expense.amount) || 0;
-        if (expense.status === "manager_approved")
-          acc.manager_approved += parseFloat(expense.amount) || 0;
+        if (expense.status === "managerApproved")
+          acc.managerApproved += parseFloat(expense.amount) || 0;
         return acc;
       },
-      { total: 0, approved: 0, pending: 0, rejected: 0, manager_approved: 0 }
+      { total: 0, approved: 0, pending: 0, rejected: 0, managerApproved: 0 }
     );
   };
 
@@ -590,9 +571,9 @@ export default function AdminExpenses() {
       // Manager can approve/reject submissions where all expenses are pending
       return submission.expenses.every((exp) => exp.status === "pending");
     } else if (currentUser?.role === "finance") {
-      // Finance can approve/reject submissions where all expenses are manager_approved
+      // Finance can approve/reject submissions where all expenses are managerApproved
       return submission.expenses.every(
-        (exp) => exp.status === "manager_approved"
+        (exp) => exp.status === "managerApproved"
       );
     }
     return false;
@@ -607,7 +588,7 @@ export default function AdminExpenses() {
       currentUser?.role === "admin"
     ) {
       return (
-        expense.status === "manager_approved" || expense.status === "pending"
+        expense.status === "managerApproved" || expense.status === "pending"
       );
     }
     return false;
@@ -616,7 +597,7 @@ export default function AdminExpenses() {
   const totals = calculateTotals();
 
   const totalForFinance =
-    totals.approved + totals.rejected + totals.manager_approved;
+    totals.approved + totals.rejected + totals.managerApproved;
 
   // ---- Filtering helpers ----
   const normalize = (s) => (s || "").toString().trim().toLowerCase();
@@ -666,10 +647,8 @@ export default function AdminExpenses() {
 
         // Filter expenses by year/month/date
         const filteredExpenses = (submission.expenses || []).filter((exp) => {
-          const start = exp.travelStartDate
-            ? new Date(exp.travelStartDate)
-            : null;
-          const end = exp.travelEndDate ? new Date(exp.travelEndDate) : null;
+          const start = exp.startDate ? new Date(exp.startDate) : null;
+          const end = exp.endDate ? new Date(exp.endDate) : null;
 
           // If no dates on the expense, fail only if user asked for a date match
           if (!start || isNaN(start) || !end || isNaN(end)) {
@@ -874,131 +853,126 @@ export default function AdminExpenses() {
         )}
 
         {/* Stats Cards - Updated labels for Finance users */}
-        {stats && (
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            {[
-              // Show different stats based on user role
-              {
-                label: "Total Expenses",
-                value:
-                  currentUser?.role === "finance"
-                    ? totalForFinance
-                    : totals.total,
-                icon: RequestQuote,
-                color: "#0969da",
-                bg: "linear-gradient(135deg, #dbeafe 0%, #f0f9ff 100%)",
-                border: "#0969da",
-              },
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {[
+            // Show different stats based on user role
+            {
+              label: "Total Expenses",
+              value:
+                currentUser?.role === "finance"
+                  ? totalForFinance
+                  : totals.total,
+              icon: RequestQuote,
+              color: "#0969da",
+              bg: "linear-gradient(135deg, #dbeafe 0%, #f0f9ff 100%)",
+              border: "#0969da",
+            },
 
-              {
-                label: "Pending Review", // Changed for Finance
-                value:
-                  currentUser?.role === "finance"
-                    ? totals.manager_approved
-                    : totals.pending,
-                icon: Schedule,
-                color: "#bf8700",
-                bg: "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
-                border: "#bf8700",
-              },
-              ...(currentUser?.role === "admin" ||
-              currentUser?.role === "manager"
-                ? [
-                    {
-                      label: "Manager Approved",
-                      value: totals.manager_approved || 0,
-                      icon: SupervisorAccount,
-                      color: "#0ea5e9",
-                      bg: "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
-                      border: "#0ea5e9",
-                    },
-                  ]
-                : []),
-              {
-                label: "Fully Approved",
-                value: totals.approved,
-                icon: CheckCircle,
-                color: "#1a7f37",
-                bg: "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
-                border: "#1a7f37",
-              },
-              {
-                label: "Rejected",
-                value: totals.rejected,
-                icon: Cancel,
-                color: "#cf222e",
-                bg: "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
-                border: "#cf222e",
-              },
-            ].map((stat, index) => (
-              <Grid
-                item
-                xs={6}
-                sm={currentUser?.role === "finance" ? 3 : 2.4}
-                key={index}
-                sx={{ mx: "auto" }}
+            {
+              label: "Pending Review", // Changed for Finance
+              value:
+                currentUser?.role === "finance"
+                  ? totals.managerApproved
+                  : totals.pending,
+              icon: Schedule,
+              color: "#bf8700",
+              bg: "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
+              border: "#bf8700",
+            },
+            ...(currentUser?.role === "admin" || currentUser?.role === "manager"
+              ? [
+                  {
+                    label: "Manager Approved",
+                    value: totals.managerApproved || 0,
+                    icon: SupervisorAccount,
+                    color: "#0ea5e9",
+                    bg: "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
+                    border: "#0ea5e9",
+                  },
+                ]
+              : []),
+            {
+              label: "Fully Approved",
+              value: totals.approved,
+              icon: CheckCircle,
+              color: "#1a7f37",
+              bg: "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
+              border: "#1a7f37",
+            },
+            {
+              label: "Rejected",
+              value: totals.rejected,
+              icon: Cancel,
+              color: "#cf222e",
+              bg: "linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%)",
+              border: "#cf222e",
+            },
+          ].map((stat, index) => (
+            <Grid
+              item
+              xs={6}
+              sm={currentUser?.role === "finance" ? 3 : 2.4}
+              key={index}
+              sx={{ mx: "auto" }}
+            >
+              <Card
+                elevation={1}
+                sx={{
+                  borderRadius: "8px",
+                  background: stat.bg,
+                  border: `1px solid ${stat.border}20`,
+                  transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                  "&:hover": {
+                    boxShadow: "0 8px 25px rgba(0, 0, 0, 0.1)",
+                  },
+                }}
               >
-                <Card
-                  elevation={1}
-                  sx={{
-                    borderRadius: "8px",
-                    background: stat.bg,
-                    border: `1px solid ${stat.border}20`,
-                    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                    "&:hover": {
-                      transform: "translateY(-1px)",
-                      boxShadow: "0 8px 25px rgba(0, 0, 0, 0.1)",
-                      borderColor: "#0969da",
-                    },
-                  }}
-                >
-                  <CardContent sx={{ p: 2.5, textAlign: "center" }}>
-                    <Box
+                <CardContent sx={{ p: 2.5, textAlign: "center" }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      mb: 1.5,
+                    }}
+                  >
+                    <stat.icon
                       sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        mb: 1.5,
-                      }}
-                    >
-                      <stat.icon
-                        sx={{
-                          fontSize: 20,
-                          color: stat.color,
-                          mr: 1,
-                        }}
-                      />
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          fontWeight: 600,
-                          color: stat.color,
-                          fontSize: "0.75rem",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.5px",
-                        }}
-                      >
-                        {stat.label}
-                      </Typography>
-                    </Box>
-                    <Typography
-                      variant="h5"
-                      sx={{
-                        fontWeight: 700,
+                        fontSize: 20,
                         color: stat.color,
-                        fontSize: "1.5rem",
-                        lineHeight: 1,
-                        fontFamily: '"SF Mono", "Monaco", monospace',
+                        mr: 1,
+                      }}
+                    />
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontWeight: 600,
+                        color: stat.color,
+                        fontSize: "0.75rem",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px",
                       }}
                     >
-                      ₹{stat.value.toLocaleString()}
+                      {stat.label}
                     </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-        )}
+                  </Box>
+                  <Typography
+                    variant="h5"
+                    sx={{
+                      fontWeight: 700,
+                      color: stat.color,
+                      fontSize: "1.5rem",
+                      lineHeight: 1,
+                      fontFamily: '"SF Mono", "Monaco", monospace',
+                    }}
+                  >
+                    ₹{stat.value.toLocaleString()}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
 
         {/* Main Content Card */}
         <Card
@@ -1111,7 +1085,7 @@ export default function AdminExpenses() {
                   No{" "}
                   {activeTab === "all"
                     ? ""
-                    : activeTab === "manager_approved" &&
+                    : activeTab === "managerApproved" &&
                       currentUser?.role === "finance"
                     ? "pending review"
                     : activeTab}{" "}
@@ -1137,9 +1111,7 @@ export default function AdminExpenses() {
                           border: "0.1px solid #d1d5db",
                           transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
                           "&:hover": {
-                            transform: "translateY(-1px)",
                             boxShadow: "0 8px 25px rgba(0, 0, 0, 0.1)",
-                            borderColor: "#0969da",
                           },
                         }}
                       >
@@ -1167,7 +1139,7 @@ export default function AdminExpenses() {
                                     ? "#1a7f37"
                                     : submissionStatus === "rejected"
                                     ? "#cf222e"
-                                    : submissionStatus === "manager_approved"
+                                    : submissionStatus === "managerApproved"
                                     ? currentUser?.role === "finance"
                                       ? "#bf8700"
                                       : "#37bdfbff"
@@ -1265,7 +1237,7 @@ export default function AdminExpenses() {
                                       }}
                                     />
                                   )}
-                                  {submissionStatus === "manager_approved" && (
+                                  {submissionStatus === "managerApproved" && (
                                     <>
                                       {currentUser?.role === "finance" ? (
                                         <>
@@ -1376,11 +1348,11 @@ export default function AdminExpenses() {
                                 {submission.isResubmitted &&
                                 submission.resubmissionCount > 0
                                   ? `Resubmitted: ${new Date(
-                                      submission.resubmittedAt ||
-                                        submission.submittedAt
+                                      submission.updatedAt ||
+                                        submission.createdAt
                                     ).toLocaleString()}`
                                   : `Submitted: ${new Date(
-                                      submission.submittedAt
+                                      submission.createdAt
                                     ).toLocaleString()}`}
                               </Typography>
                             </Box>
@@ -1464,7 +1436,7 @@ export default function AdminExpenses() {
                                           display="block"
                                         >
                                           {new Date(
-                                            expense.travelStartDate
+                                            expense.startDate
                                           ).toLocaleDateString()}
                                         </Typography>
                                         <Typography
@@ -1473,7 +1445,7 @@ export default function AdminExpenses() {
                                         >
                                           to{" "}
                                           {new Date(
-                                            expense.travelEndDate
+                                            expense.endDate
                                           ).toLocaleDateString()}
                                         </Typography>
                                       </TableCell>
@@ -1515,7 +1487,7 @@ export default function AdminExpenses() {
                                           )}
 
                                           {expense.status ===
-                                            "manager_approved" && (
+                                            "managerApproved" && (
                                             <>
                                               {currentUser?.role ===
                                               "finance" ? (
@@ -1578,47 +1550,23 @@ export default function AdminExpenses() {
                                               gap: 0.5,
                                             }}
                                           >
-                                            {/* Always show Manager Approved chip for Finance when status is manager_approved */}
-                                            {expense.status ===
-                                              "manager_approved" &&
-                                              currentUser?.role === "finance" &&
-                                              expense.managerApproval
-                                                ?.status === "approved" && (
-                                                <Chip
-                                                  icon={<SupervisorAccount />}
-                                                  label="Manager ✓"
-                                                  size="small"
-                                                  sx={{
-                                                    backgroundColor:
-                                                      "rgba(59, 130, 246, 0.1)",
-                                                    color: "#3b82f6",
-                                                    fontWeight: 500,
-                                                    fontSize: "0.7rem",
-                                                  }}
-                                                />
-                                              )}
+                                            {/* Show Manager approved chip */}
+                                            {submission.isManagerApproved && (
+                                              <Chip
+                                                icon={<SupervisorAccount />}
+                                                label="Manager ✓"
+                                                size="small"
+                                                sx={{
+                                                  backgroundColor:
+                                                    "rgba(59, 130, 246, 0.1)",
+                                                  color: "#3b82f6",
+                                                  fontWeight: 500,
+                                                  fontSize: "0.7rem",
+                                                }}
+                                              />
+                                            )}
 
-                                            {/* Show Manager approved for other roles */}
-                                            {expense.managerApproval?.status ===
-                                              "approved" &&
-                                              currentUser?.role !==
-                                                "finance" && (
-                                                <Chip
-                                                  icon={<SupervisorAccount />}
-                                                  label="Manager ✓"
-                                                  size="small"
-                                                  sx={{
-                                                    backgroundColor:
-                                                      "rgba(59, 130, 246, 0.1)",
-                                                    color: "#3b82f6",
-                                                    fontWeight: 500,
-                                                    fontSize: "0.7rem",
-                                                  }}
-                                                />
-                                              )}
-
-                                            {expense.financeApproval?.status ===
-                                              "approved" && (
+                                            {submission.isFinanceApproved && (
                                               <Chip
                                                 icon={<AccountBalance />}
                                                 label="Finance ✓"
@@ -1647,29 +1595,17 @@ export default function AdminExpenses() {
                                                 }}
                                               />
                                             )}
-                                            {expense.isEdited && (
-                                              <Chip
-                                                label="Edited"
-                                                size="small"
-                                                sx={{
-                                                  backgroundColor:
-                                                    "rgba(245, 158, 11, 0.1)",
-                                                  color: "#f59e0b",
-                                                  fontWeight: 500,
-                                                  fontSize: "0.7rem",
-                                                }}
-                                              />
-                                            )}
                                           </Box>
 
                                           {/* Rejection comments */}
-                                          {expense.comments &&
+                                          {expense.adminComments &&
                                             expense.status === "rejected" && (
-                                              <Tooltip title={expense.comments}>
+                                              <Tooltip
+                                                title={expense.adminComments}
+                                              >
                                                 <Typography
                                                   variant="caption"
                                                   color="error"
-                                                  display="block"
                                                   sx={{
                                                     mt: 1,
                                                     pl: 0.5,
@@ -1685,41 +1621,45 @@ export default function AdminExpenses() {
                                       <TableCell>
                                         <Box sx={{ display: "flex", gap: 0.5 }}>
                                           {/* View Document Button */}
-                                          {expense.fileName && (
-                                            <Tooltip title="View Receipt">
-                                              <IconButton
-                                                size="small"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  viewDocument(expense._id);
-                                                }}
-                                                sx={{ color: "info.main" }}
+                                          {expense.files &&
+                                            expense.files.length > 0 && (
+                                              <Tooltip
+                                                title={expense.files.length}
                                               >
-                                                <Visibility fontSize="small" />
-                                              </IconButton>
-                                            </Tooltip>
-                                          )}
+                                                <IconButton
+                                                  size="small"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    viewDocument(expense);
+                                                  }}
+                                                  sx={{ color: "info.main" }}
+                                                >
+                                                  <Visibility fontSize="small" />
+                                                </IconButton>
+                                              </Tooltip>
+                                            )}
 
                                           {/* Download Receipt Button */}
-                                          {expense.fileName && (
-                                            <Tooltip title="Download Receipt">
-                                              <IconButton
-                                                size="small"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  downloadReceipt(expense);
-                                                }}
-                                                sx={{ color: "#10b981" }}
-                                              >
-                                                <Download fontSize="small" />
-                                              </IconButton>
-                                            </Tooltip>
-                                          )}
+                                          {expense.files &&
+                                            expense.files.length > 0 && (
+                                              <Tooltip title="Download Receipt">
+                                                <IconButton
+                                                  size="small"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    downloadReceipt(expense);
+                                                  }}
+                                                  sx={{ color: "#10b981" }}
+                                                >
+                                                  <Download fontSize="small" />
+                                                </IconButton>
+                                              </Tooltip>
+                                            )}
 
                                           {/* Individual Approve/Disapprove buttons for Finance only */}
                                           {canActOnExpense(expense) && (
                                             <>
-                                              <Tooltip title="Approve">
+                                              <Tooltip title={expense._id}>
                                                 <IconButton
                                                   size="small"
                                                   onClick={(e) => {
@@ -1727,7 +1667,7 @@ export default function AdminExpenses() {
                                                     setActionDialog({
                                                       open: true,
                                                       expense,
-                                                      submission: null,
+                                                      submission: submission,
                                                       action: "approved",
                                                       type: "individual",
                                                     });
@@ -1747,7 +1687,7 @@ export default function AdminExpenses() {
                                                     setActionDialog({
                                                       open: true,
                                                       expense,
-                                                      submission: null,
+                                                      submission: submission,
                                                       action: "rejected",
                                                       type: "individual",
                                                     });
@@ -1801,13 +1741,11 @@ export default function AdminExpenses() {
                                 >
                                   Originally:{" "}
                                   {new Date(
-                                    submission.originalSubmittedAt ||
-                                      submission.submittedAt
+                                    submission.createdAt
                                   ).toLocaleString()}{" "}
                                   • Resubmitted:{" "}
                                   {new Date(
-                                    submission.resubmittedAt ||
-                                      submission.submittedAt
+                                    submission.updatedAt || submission.createdAt
                                   ).toLocaleString()}
                                 </Typography>
                               </Box>
@@ -1835,7 +1773,7 @@ export default function AdminExpenses() {
                                           open: true,
                                           expense: null,
                                           submission,
-                                          action: "approved",
+                                          action: "managerApproved",
                                           type: "bulk",
                                         });
                                       }}
@@ -1975,13 +1913,15 @@ export default function AdminExpenses() {
                   width: 32,
                   height: 32,
                   bgcolor:
-                    actionDialog.action === "approved"
+                    actionDialog.action === "approved" ||
+                    actionDialog.action === "managerApproved"
                       ? "success.main"
                       : "error.main",
                   mr: 2,
                 }}
               >
-                {actionDialog.action === "approved" ? (
+                {actionDialog.action === "approved" ||
+                actionDialog.action === "managerApproved" ? (
                   currentUser?.role === "manager" ? (
                     <ThumbUp />
                   ) : (
@@ -1996,7 +1936,10 @@ export default function AdminExpenses() {
               <Box>
                 <Typography variant="h6" fontWeight={600}>
                   {currentUser?.role === "manager" ? "Manager" : "Finance"}{" "}
-                  {actionDialog.action === "approved" ? "Approve" : "Reject"}{" "}
+                  {actionDialog.action === "approved" ||
+                  actionDialog.action === "managerApproved"
+                    ? "Approve"
+                    : "Reject"}{" "}
                   {actionDialog.type === "bulk" ? "All Expenses" : "Expense"}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -2056,15 +1999,15 @@ export default function AdminExpenses() {
                   </Typography>
                   <Typography variant="body2">
                     <strong>Travel Period:</strong>{" "}
-                    {actionDialog.expense.travelStartDate
+                    {actionDialog.expense.startDate
                       ? new Date(
-                          actionDialog.expense.travelStartDate
+                          actionDialog.expense.startDate
                         ).toLocaleDateString()
                       : "Not available"}{" "}
                     -{" "}
-                    {actionDialog.expense.travelEndDate
+                    {actionDialog.expense.endDate
                       ? new Date(
-                          actionDialog.expense.travelEndDate
+                          actionDialog.expense.endDate
                         ).toLocaleDateString()
                       : "Not available"}
                   </Typography>
@@ -2090,14 +2033,17 @@ export default function AdminExpenses() {
                   </Typography>
                   <Typography variant="body2">
                     <strong>Action:</strong>{" "}
-                    {actionDialog.action === "approved" ? "Approve" : "Reject"}{" "}
+                    {actionDialog.action === "approved" ||
+                    actionDialog.action === "managerApproved"
+                      ? "Approve"
+                      : "Reject"}{" "}
                     all expenses in this submission
                   </Typography>
                 </Paper>
               )}
 
               {/* Approval History */}
-              {actionDialog.expense?.managerApproval && (
+              {actionDialog.submission?.isManagerApproved && (
                 <Paper
                   elevation={0}
                   sx={{ p: 2, bgcolor: "info.50", borderRadius: "8px" }}
@@ -2109,23 +2055,17 @@ export default function AdminExpenses() {
                   >
                     Previous Approvals:
                   </Typography>
-                  {actionDialog.expense.managerApproval.status ===
-                    "approved" && (
-                    <Typography variant="body2" color="info.dark">
-                      <strong>Manager:</strong> Approved by{" "}
-                      {actionDialog.expense.managerApproval.reviewedByName} on{" "}
-                      {new Date(
-                        actionDialog.expense.managerApproval.reviewedAt
-                      ).toLocaleDateString()}
-                    </Typography>
-                  )}
+                  <Typography variant="body2" color="info.dark">
+                    <strong>Manager:</strong> Approved
+                  </Typography>
                 </Paper>
               )}
 
               {/* Comments Field */}
               <TextField
                 label={
-                  actionDialog.action === "approved"
+                  actionDialog.action === "approved" ||
+                  actionDialog.action === "managerApproved"
                     ? `${
                         currentUser?.role === "manager" ? "Manager" : "Finance"
                       } Approval Comments (Optional)`
@@ -2140,7 +2080,8 @@ export default function AdminExpenses() {
                 rows={3}
                 required={actionDialog.action === "rejected"}
                 placeholder={
-                  actionDialog.action === "approved"
+                  actionDialog.action === "approved" ||
+                  actionDialog.action === "managerApproved"
                     ? "Add any approval notes (optional)..."
                     : "Please provide a reason for rejection (required)..."
                 }
@@ -2176,12 +2117,13 @@ export default function AdminExpenses() {
               Cancel
             </Button>
             <Button
-              onClick={
-                actionDialog.type === "bulk"
-                  ? handleBulkAction
-                  : handleIndividualAction
+              onClick={handleIndividualAction}
+              color={
+                actionDialog.action === "approved" ||
+                actionDialog.action === "managerApproved"
+                  ? "success"
+                  : "error"
               }
-              color={actionDialog.action === "approved" ? "success" : "error"}
               variant="contained"
               disabled={actionDialog.action === "rejected" && !comments.trim()}
               sx={{
@@ -2192,7 +2134,8 @@ export default function AdminExpenses() {
                 transition: "all 0.3s ease",
               }}
             >
-              {actionDialog.action === "approved"
+              {actionDialog.action === "approved" ||
+              actionDialog.action === "managerApproved"
                 ? `${
                     currentUser?.role === "manager" ? "Manager" : "Finance"
                   } Approve ${actionDialog.type === "bulk" ? "All" : "Expense"}`
