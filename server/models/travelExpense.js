@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { create } = require("./user");
 
 const expensesSchema = new mongoose.Schema({
   expenseType: {
@@ -36,23 +37,28 @@ const expensesSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["pending", "approved", "rejected"],
+    enum: ["pending", "managerApproved", "approved", "rejected"],
     default: "pending",
   },
-  files: [{ name: String, type: String, data: String }],
+  files: [
+    {
+      name: { type: String },
+      type: { type: String },
+      data: { type: String },
+    },
+  ],
   approvedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
   },
   approvedAt: Date,
   adminComments: String,
-  reSubmittedDate: Date,
   isResubmitted: {
     type: Boolean,
     default: false,
   },
 });
- 
+
 const expense = new mongoose.Schema({
   employeeId: {
     type: String,
@@ -63,9 +69,17 @@ const expense = new mongoose.Schema({
     required: true,
   },
   expenses: [expensesSchema],
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  },
   status: {
     type: String,
-    enum: ["pending", "approved", "rejected"],
+    enum: ["pending", "approved", "managerApproved", "rejected"],
     default: "pending",
   },
   isManagerApproved: {
@@ -77,7 +91,7 @@ const expense = new mongoose.Schema({
     default: false,
   },
 });
- 
+
 module.exports = {
   Expense: mongoose.model("Expense", expense),
 };

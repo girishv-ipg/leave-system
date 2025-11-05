@@ -39,7 +39,7 @@ router.get(
   expenseController.getEmployeeExpenses
 );
 router.put(
-  "/expenses/:id",
+  "/expenses/:id/expense/:expenseId",
   authenticate,
   upload.any(),
   expenseController.updateExpense
@@ -64,7 +64,7 @@ router.patch(
 
 // Finance review
 router.patch(
-  "/expenses/:id/finance-review",
+  "/expenses/:id/expense/:expenseId/finance-review",
   authenticate,
   expenseController.financeReviewExpense
 );
