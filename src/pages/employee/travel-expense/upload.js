@@ -218,8 +218,8 @@ export default function BulkExpenseEntry() {
       formData.append("expenseType", expense.expenseType);
       formData.append("amount", parseFloat(expense.amount));
       formData.append("description", expense.description);
-      formData.append("travelStartDate", expense.travelStartDate);
-      formData.append("travelEndDate", expense.travelEndDate);
+      formData.append("startDate", expense.travelStartDate);
+      formData.append("endDate", expense.travelEndDate);
 
       // Add file if present
       if (expense.file) {
@@ -249,7 +249,7 @@ export default function BulkExpenseEntry() {
 
       const result = response.data;
 
-      if (result.success) {
+      if (result.message) {
         setSuccess(result.message || "Expense updated successfully");
 
         // Redirect to index page after 2 seconds
@@ -318,8 +318,8 @@ export default function BulkExpenseEntry() {
           expenseType: expense.expenseType,
           amount: parseFloat(expense.amount),
           description: expense.description,
-          travelStartDate: expense.travelStartDate,
-          travelEndDate: expense.travelEndDate,
+          startDate: expense.travelStartDate,
+          endDate: expense.travelEndDate,
           hasFile: !!expense.file,
           fileIndex: expense.file ? index : null,
         };
@@ -338,21 +338,17 @@ export default function BulkExpenseEntry() {
       // Debug FormData contents
 
       // Make API call to submit bulk expenses using FormData
-      const response = await axiosInstance.post(
-        "/expenses/bulk-submit",
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data",
-          },
-          timeout: 50000, // 50 seconds timeout for bulk upload
-        }
-      );
+      const response = await axiosInstance.post("/expenses", formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+        timeout: 50000, // 50 seconds timeout for bulk upload
+      });
 
       const result = response.data;
 
-      if (result.success) {
+      if (result.message) {
         setSuccess(result.message);
 
         // Redirect to index page after 2 seconds
