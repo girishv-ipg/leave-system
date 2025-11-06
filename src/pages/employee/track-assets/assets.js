@@ -203,8 +203,14 @@ export default function TrackAssetsPage() {
         setErr("Please login first");
         return;
       }
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+
       const res = await axiosInstance.get("/api/assets", {
         headers: { Authorization: `Bearer ${token}` },
+        params: {
+          employeeCode: user.employeeCode, // for employees
+          role: user.role, // admin / manager / employee
+        },
       });
       setAssets(res.data || []);
     } catch (e) {
@@ -444,7 +450,7 @@ export default function TrackAssetsPage() {
                   variant="body2"
                   sx={{ color: "text.secondary", mt: 0.5 }}
                 >
-                  Manage company hardware, software, and more
+                  Manage hardware, software, and more
                 </Typography>
               </Box>
             </Box>

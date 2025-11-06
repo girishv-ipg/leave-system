@@ -207,16 +207,25 @@ export default function AdminTrackAssetsPage() {
     try {
       setLoading(true);
       setErr(null);
+
       const token = localStorage.getItem("token");
       if (!token) {
         setErr("Please login first");
         return;
       }
+
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+
       const res = await axiosInstance.get("/api/assets", {
         headers: { Authorization: `Bearer ${token}` },
+        params: {
+          employeeCode: user.employeeCode, // for employees
+          role: user.role, // admin / manager / employee
+        },
       });
+
       setAssets(res.data || []);
-      setSelectedIds([]); // clear selection on refresh
+      setSelectedIds([]);
     } catch (e) {
       console.error(e);
       setErr("Failed to load assets. Please try again.");

@@ -66,7 +66,30 @@ const submitAssetInformation = async (req, res) => {
 // Get All Assets
 const getAllAssets = async (req, res) => {
   try {
-    const assets = await Assets.find({ isDeleted: { $ne: true } }).exec();
+    const { employeeCode, role } = req.query;
+    let assets = [];
+
+    if (
+      role === "admin" ||
+      role === "manager" ||
+      role === "hr" ||
+      role === "finance"
+    ) {
+      // Admins/managers can see all assets
+      assets = await Assets.find({ isDeleted: { $ne: true } }).exec();
+    } else {
+      // Employees see only their own asset
+      assets = await Assets.find({
+        $and: [
+          { isDeleted: { $ne: true } },
+          {
+            $or: [{ assignedTo: employeeCode }],
+          },
+          { assignedTo: { $ne: null } }, // exclude null or unassigned
+        ],
+      }).exec();
+    }
+
     res.status(200).json(assets);
   } catch (error) {
     console.error("Failed to fetch assets:", error);
