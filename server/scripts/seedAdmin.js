@@ -21,20 +21,9 @@ const seedAdmin = async () => {
       totalLeaveQuota: 30,
     });
 
-    const user = new User({
-      name: "karthik",
-      employeeCode: "25",
-      email: "karthik@example.com",
-      password: hashedPassword,
-      role: "employee",
-      designation: "Manager",
-      totalLeaveQuota: 30,
-    });
-
     await adminUser.save();
     console.log("Admin user seeded successfully");
-    await user.save();
-    console.log("Manager user seeded successfully");
+
     process.exit(0);
   } catch (err) {
     console.error("Seeding failed:", err);

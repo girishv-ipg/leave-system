@@ -1,126 +1,97 @@
-// ============================================================================
-// DATABASE SCHEMA MODELS
-// ============================================================================
+const mongoose = require("mongoose");
+const { create } = require("./user");
 
-// models/BulkSubmission.js
-const mongoose = require('mongoose');
-
-const bulkSubmissionSchema = new mongoose.Schema({
-  employeeId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  submittedAt: {
-    type: Date,
-    default: Date.now
-  },
-  totalAmount: {
-    type: Number,
-    required: true
-  },
-  overallStatus: {
-    type: String,
-    enum: ['pending', 'approved', 'rejected', 'mixed'],
-    default: 'pending'
-  },
-  expenseCount: {
-    type: Number,
-    required: true
-  },
-  statusCounts: {
-    approved: { type: Number, default: 0 },
-    pending: { type: Number, default: 0 },
-    rejected: { type: Number, default: 0 }
-  }
-}, {
-  timestamps: true
-});
-
-// models/Expense.js - Enhanced schema
-const expenseSchema = new mongoose.Schema({
-  bulkSubmissionId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'BulkSubmission',
-    required: true
-  },
-  bulkSubmissionIndex: {
-    type: Number,
-    required: true
-  },
-  employeeId: {
-    type: String,
-    ref: 'User',
-    required: true
-  },
+const expensesSchema = new mongoose.Schema({
   expenseType: {
     type: String,
     required: true,
-    enum: ['travel', 'Breakfast', 'Lunch', 'Dinner', 'accommodation', 'transportation', 'fuel', 'office_supplies', 'training', 'other']
+    enum: [
+      "travel",
+      "breakfast",
+      "lunch",
+      "dinner",
+      "accommodation",
+      "transportation",
+      "fuel",
+      "office_supplies",
+      "training",
+      "other",
+    ],
   },
   amount: {
     type: Number,
     required: true,
-    min: 0
+    min: 0,
   },
   description: {
     type: String,
-    required: true
+    required: true,
   },
-  travelStartDate: {
+  startDate: {
     type: Date,
-    required: true
+    required: true,
   },
-  travelEndDate: {
+  endDate: {
     type: Date,
-    required: true
+    required: true,
   },
   status: {
     type: String,
-    enum: ['pending', 'approved', 'rejected'],
-    default: 'pending'
+    enum: ["pending", "managerApproved", "approved", "rejected"],
+    default: "pending",
   },
-  fileName: String,
-  fileType: String,
-  fileSize: Number,
-  fileData: String, // Base64 encoded
-  
-  // Review fields
-  reviewedBy: {
+  files: [
+    {
+      name: { type: String },
+      type: { type: String },
+      data: { type: String },
+    },
+  ],
+  approvedBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+    ref: "User",
   },
-  reviewedAt: Date,
-  comments: String,
-  
-  // Edit tracking
-  isEdited: {
-    type: Boolean,
-    default: false
-  },
+  approvedAt: Date,
+  adminComments: String,
   isResubmitted: {
     type: Boolean,
-    default: false
+    default: false,
   },
-  lastEditDate: Date,
-  resubmissionDate: Date,
-  editHistory: [{
-    editDate: { type: Date, default: Date.now },
-    previousStatus: String,
-    editedFields: {
-      amount: { old: Number, new: Number },
-      description: { old: String, new: String },
-      expenseType: { old: String, new: String },
-      travelStartDate: { old: Date, new: Date },
-      travelEndDate: { old: Date, new: Date }
-    },
-    fileUpdated: { type: Boolean, default: false }
-  }]
-}, {
-  timestamps: true
+});
+
+const expense = new mongoose.Schema({
+  employeeId: {
+    type: String,
+    required: true,
+  },
+  totalAmount: {
+    type: Number,
+    required: true,
+  },
+  expenses: [expensesSchema],
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  },
+  status: {
+    type: String,
+    enum: ["pending", "approved", "managerApproved", "rejected"],
+    default: "pending",
+  },
+  isManagerApproved: {
+    type: Boolean,
+    default: false,
+  },
+  isFinanceApproved: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 module.exports = {
-  BulkSubmission: mongoose.model('BulkSubmission', bulkSubmissionSchema),
-  Expense: mongoose.model('Expense', expenseSchema)
+  Expense: mongoose.model("Expense", expense),
 };

@@ -64,7 +64,7 @@ import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
 
 export default function ExpenseIndex() {
-  const [bulkSubmissions, setBulkSubmissions] = useState([]);
+  const [submissions, setSubmissions] = useState([]);
   const [filteredSubmissions, setFilteredSubmissions] = useState([]);
   const [expandedSubmission, setExpandedSubmission] = useState(null);
   const [selectedExpense, setSelectedExpense] = useState(null);
@@ -78,8 +78,8 @@ export default function ExpenseIndex() {
     expenseType: "",
     amount: "",
     description: "",
-    travelStartDate: "",
-    travelEndDate: "",
+    startDate: "",
+    endDate: "",
   });
   const [newFile, setNewFile] = useState(null);
   const [filterType, setFilterType] = useState("year");
@@ -109,7 +109,7 @@ export default function ExpenseIndex() {
       color: "warning",
     },
     {
-      value: "manager_approved",
+      value: "managerApproved",
       label: "Manager Approved",
       icon: <SupervisorAccount />,
       color: "info",
@@ -141,8 +141,8 @@ export default function ExpenseIndex() {
     // base list from tab
     let base =
       activeTab === "all"
-        ? bulkSubmissions
-        : bulkSubmissions
+        ? submissions
+        : submissions
             .map((submission) => ({
               ...submission,
               expenses: submission.expenses.filter(
@@ -163,8 +163,8 @@ export default function ExpenseIndex() {
     const filtered = base
       .map((submission) => {
         const exp = (submission.expenses || []).filter((e) => {
-          const start = e.travelStartDate ? new Date(e.travelStartDate) : null;
-          const end = e.travelEndDate ? new Date(e.travelEndDate) : null;
+          const start = e.startDate ? new Date(e.startDate) : null;
+          const end = e.endDate ? new Date(e.endDate) : null;
 
           // if the user applied any date filters but expense has invalid dates → drop it
           if (
@@ -199,7 +199,7 @@ export default function ExpenseIndex() {
       .filter((s) => s.expenses.length > 0);
 
     setFilteredSubmissions(filtered);
-  }, [activeTab, bulkSubmissions, filters]);
+  }, [activeTab, submissions, filters]);
 
   const fetchExpenses = async () => {
     try {
@@ -211,15 +211,10 @@ export default function ExpenseIndex() {
         return;
       }
 
-      const response = await axiosInstance.get("/expenses", {
+      const response = await axiosInstance.get("/expenses/employee", {
         headers: { Authorization: `Bearer ${token}` },
       });
-
-      if (response.data.success) {
-        setBulkSubmissions(response.data.data);
-      } else {
-        setError("Failed to fetch expenses");
-      }
+      setSubmissions(response?.data?.data || []);
     } catch (err) {
       console.error("Error fetching expenses:", err);
       setError("Failed to load expenses. Please try again.");
@@ -231,9 +226,9 @@ export default function ExpenseIndex() {
   // Filter submissions based on active tab
   useEffect(() => {
     if (activeTab === "all") {
-      setFilteredSubmissions(bulkSubmissions);
+      setFilteredSubmissions(submissions);
     } else {
-      const filtered = bulkSubmissions
+      const filtered = submissions
         .map((submission) => ({
           ...submission,
           expenses: submission.expenses.filter(
@@ -243,46 +238,46 @@ export default function ExpenseIndex() {
         .filter((submission) => submission.expenses.length > 0);
       setFilteredSubmissions(filtered);
     }
-  }, [activeTab, bulkSubmissions]);
+  }, [activeTab, submissions]);
 
   const getStatusColor = (status) => {
     const colors = {
       approved: "success",
       rejected: "error",
       pending: "warning",
-      manager_approved: "info",
+      managerApproved: "info",
     };
     return colors[status] || "default";
   };
 
   const getSubmissionStatus = (expenses) => {
-    const statuses = expenses.map((exp) => exp.status);
+    const statuses = expenses?.map((exp) => exp.status);
     if (statuses.every((status) => status === "approved")) return "approved";
     if (statuses.some((status) => status === "rejected")) return "rejected";
-    if (statuses.some((status) => status === "manager_approved"))
-      return "manager_approved";
+    if (statuses.some((status) => status === "managerApproved"))
+      return "managerApproved";
     return "pending";
   };
 
   const getStatusCounts = (expenses) => {
-    return expenses.reduce((acc, exp) => {
+    return expenses?.reduce((acc, exp) => {
       acc[exp.status] = (acc[exp.status] || 0) + 1;
       return acc;
     }, {});
   };
 
   const calculateTotals = () => {
-    const allExpenses = bulkSubmissions.flatMap(
+    const allExpenses = submissions?.flatMap(
       (submission) => submission.expenses
     );
-    return allExpenses.reduce(
+    return allExpenses?.reduce(
       (acc, expense) => {
         const amount = parseFloat(expense.amount) || 0;
         acc.total += amount;
         acc[expense.status] = (acc[expense.status] || 0) + amount;
         return acc;
       },
-      { total: 0, approved: 0, pending: 0, rejected: 0, manager_approved: 0 }
+      { total: 0, approved: 0, pending: 0, rejected: 0, managerApproved: 0 }
     );
   };
 
@@ -298,8 +293,8 @@ export default function ExpenseIndex() {
       expenseType: expense.expenseType || "",
       amount: expense.amount.toString(),
       description: expense.description,
-      travelStartDate: expense.travelStartDate,
-      travelEndDate: expense.travelEndDate,
+      startDate: expense.startDate,
+      endDate: expense.endDate,
     });
     setNewFile(null);
     setEditDialogOpen(true);
@@ -371,13 +366,18 @@ export default function ExpenseIndex() {
         formData.append("file", newFile);
       }
 
+      // Find the bulk submission ID
+      const submission = submissions?.find((sub) =>
+        sub.expenses.some((exp) => exp._id === selectedExpense._id)
+      );
+
       const response = await axiosInstance.put(
-        `/expenses/${selectedExpense._id}`,
+        `/expenses/${submission._id}/expense/${selectedExpense._id}`,
         formData,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      if (response.data.success) {
+      if (response.data.message) {
         handleCloseEditDialog();
         fetchExpenses();
       } else {
@@ -399,34 +399,29 @@ export default function ExpenseIndex() {
       expenseType: "",
       amount: "",
       description: "",
-      travelStartDate: "",
-      travelEndDate: "",
+      startDate: "",
+      endDate: "",
     });
   };
-
-  const handleViewDocument = async (id) => {
+  const handleViewDocument = async (expense) => {
     try {
-      const token = localStorage.getItem("token");
-      const response = await axiosInstance.get(`/expenses/${id}/fileData`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const expense = response.data;
-      if (expense.fileData) {
-        const byteCharacters = atob(expense.fileData);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: expense.fileType });
-
-        const url = URL.createObjectURL(blob);
-        window.open(url, "_blank");
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      } else {
+      if (!expense.files || expense.files.length === 0) {
         alert("No document found for this expense");
+        return;
       }
+
+      const file = expense.files[0];
+      const byteCharacters = atob(file.data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: file.type });
+
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) {
       alert("Error viewing document: " + error.message);
     }
@@ -438,10 +433,9 @@ export default function ExpenseIndex() {
       editFormData.amount &&
       parseFloat(editFormData.amount) > 0 &&
       editFormData.description &&
-      editFormData.travelStartDate &&
-      editFormData.travelEndDate &&
-      new Date(editFormData.travelStartDate) <=
-        new Date(editFormData.travelEndDate)
+      editFormData.startDate &&
+      editFormData.endDate &&
+      new Date(editFormData.startDate) <= new Date(editFormData.endDate)
     );
   };
 
@@ -493,7 +487,7 @@ export default function ExpenseIndex() {
     },
     {
       label: "Manager Approved",
-      value: totals.manager_approved || 0,
+      value: totals.managerApproved || 0,
       icon: SupervisorAccount,
       color: "#0ea5e9",
       bg: "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
@@ -693,15 +687,6 @@ export default function ExpenseIndex() {
                             Role: {currentUser.role || "Employee"}
                           </Typography>
                           <br />
-                          {/* <Typography
-                            variant="caption"
-                            sx={{
-                              color: "text.secondary",
-                              fontSize: "0.75rem",
-                            }}
-                          >
-                            Department: {currentUser.department || "General"}
-                          </Typography> */}
                         </Box>
                       </CardContent>
                     </Card>
@@ -826,60 +811,6 @@ export default function ExpenseIndex() {
           ))}
         </Grid>
 
-        {/* Enhanced Tabs */}
-        {/* <Card
-          elevation={0}
-          sx={{
-            borderRadius: "12px",
-            overflow: "hidden",
-            backgroundColor: "white",
-            border: "1px solid #e1e4e8",
-            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-            mb: 3,
-          }}
-        >
-          <Tabs
-            value={activeTab}
-            onChange={(e, newValue) => setActiveTab(newValue)}
-            sx={{
-              borderBottom: "1px solid #e1e4e8",
-              px: 2,
-              "& .MuiTab-root": {
-                minHeight: 60,
-                fontWeight: 600,
-                textTransform: "none",
-                fontSize: "0.875rem",
-                transition: "all 0.2s ease",
-                "&:hover": {
-                  transform: "translateY(-1px)",
-                },
-              },
-              "& .Mui-selected": {
-                color: "#0969da",
-              },
-              "& .MuiTabs-indicator": {
-                backgroundColor: "#0969da",
-                height: 3,
-                borderRadius: "3px 3px 0 0",
-              },
-              "& .MuiTabs-scrollButtons": {
-                display: "none", // Hide scroll arrows
-              },
-            }}
-            variant="scrollable"
-            scrollButtons={false}
-          >
-            {tabs.map((tab) => (
-              <Tab
-                key={tab.value}
-                label={tab.label}
-                value={tab.value}
-                icon={tab.icon}
-                iconPosition="start"
-              />
-            ))}
-          </Tabs>
-        </Card> */}
         {/* Enhanced Tabs + Right-aligned Filters in the same row */}
         <Card
           elevation={0}
@@ -1058,7 +989,7 @@ export default function ExpenseIndex() {
                                     ? "#1a7f37"
                                     : submissionStatus === "rejected"
                                     ? "#cf222e"
-                                    : submissionStatus === "manager_approved"
+                                    : submissionStatus === "managerApproved"
                                     ? "#37bdfbff"
                                     : submissionStatus === "pending"
                                     ? "#bf8700"
@@ -1103,7 +1034,7 @@ export default function ExpenseIndex() {
                                     }}
                                   />
                                 )}
-                                {submissionStatus === "manager_approved" && (
+                                {submissionStatus === "managerApproved" && (
                                   <Chip
                                     label="Manager Approved"
                                     size="small"
@@ -1122,7 +1053,7 @@ export default function ExpenseIndex() {
                                     }}
                                   />
                                 )}
-                                {submission.overallStatus === "pending" && (
+                                {submission.status === "pending" && (
                                   <Chip
                                     label={`${statusCounts.pending} Pending`}
                                     size="small"
@@ -1193,11 +1124,10 @@ export default function ExpenseIndex() {
                               {submission.expenses.length} expenses •{" "}
                               {submission.isResubmitted
                                 ? `Resubmitted: ${new Date(
-                                    submission.resubmittedAt ||
-                                      submission.submittedAt
+                                    submission.updatedAt
                                   ).toLocaleString()}`
                                 : `Submitted: ${new Date(
-                                    submission.submittedAt
+                                    submission.createdAt
                                   ).toLocaleString()}`}
                             </Typography>
                           </Box>
@@ -1298,7 +1228,7 @@ export default function ExpenseIndex() {
                                             display="block"
                                           >
                                             {new Date(
-                                              expense.travelStartDate
+                                              expense.startDate
                                             ).toLocaleDateString()}
                                           </Typography>
                                           <Typography
@@ -1307,7 +1237,7 @@ export default function ExpenseIndex() {
                                           >
                                             to{" "}
                                             {new Date(
-                                              expense.travelEndDate
+                                              expense.endDate
                                             ).toLocaleDateString()}
                                           </Typography>
                                         </TableCell>
@@ -1356,7 +1286,7 @@ export default function ExpenseIndex() {
                                             )}
 
                                             {expense.status ===
-                                              "manager_approved" && (
+                                              "managerApproved" && (
                                               <Chip
                                                 label={"Manager Approved"}
                                                 size="small"
@@ -1464,10 +1394,10 @@ export default function ExpenseIndex() {
                                             </Box>
 
                                             {/* Rejection comments */}
-                                            {expense.comments &&
+                                            {expense.adminComments &&
                                               expense.status === "rejected" && (
                                                 <Tooltip
-                                                  title={expense.comments}
+                                                  title={expense.adminComments}
                                                 >
                                                   <Typography
                                                     variant="caption"
@@ -1494,29 +1424,31 @@ export default function ExpenseIndex() {
                                           <Box
                                             sx={{ display: "flex", gap: 0.5 }}
                                           >
-                                            {expense.fileName && (
-                                              <Tooltip title="View Receipt">
-                                                <IconButton
-                                                  size="small"
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleViewDocument(
-                                                      expense._id
-                                                    );
-                                                  }}
-                                                  sx={{
-                                                    color: "info.main",
-                                                    transition: "all 0.2s ease",
-                                                    "&:hover": {
-                                                      transform: "scale(1.1)",
-                                                      color: "info.dark",
-                                                    },
-                                                  }}
-                                                >
-                                                  <Visibility fontSize="small" />
-                                                </IconButton>
-                                              </Tooltip>
-                                            )}
+                                            {expense.files &&
+                                              expense.files.length > 0 && (
+                                                <Tooltip title="View Receipt">
+                                                  <IconButton
+                                                    size="small"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleViewDocument(
+                                                        expense
+                                                      );
+                                                    }}
+                                                    sx={{
+                                                      color: "info.main",
+                                                      transition:
+                                                        "all 0.2s ease",
+                                                      "&:hover": {
+                                                        transform: "scale(1.1)",
+                                                        color: "info.dark",
+                                                      },
+                                                    }}
+                                                  >
+                                                    <Visibility fontSize="small" />
+                                                  </IconButton>
+                                                </Tooltip>
+                                              )}
                                             {(expense.status === "pending" ||
                                               expense.status ===
                                                 "rejected") && (
@@ -1678,9 +1610,9 @@ export default function ExpenseIndex() {
                       fullWidth
                       label="Travel Start Date"
                       type="date"
-                      value={editFormData.travelStartDate}
+                      value={editFormData.startDate}
                       onChange={(e) =>
-                        handleFormChange("travelStartDate", e.target.value)
+                        handleFormChange("startDate", e.target.value)
                       }
                       InputLabelProps={{ shrink: true }}
                       sx={{
@@ -1695,9 +1627,9 @@ export default function ExpenseIndex() {
                       fullWidth
                       label="Travel End Date"
                       type="date"
-                      value={editFormData.travelEndDate}
+                      value={editFormData.endDate}
                       onChange={(e) =>
-                        handleFormChange("travelEndDate", e.target.value)
+                        handleFormChange("endDate", e.target.value)
                       }
                       InputLabelProps={{ shrink: true }}
                       sx={{
@@ -1759,7 +1691,7 @@ export default function ExpenseIndex() {
                               variant="outlined"
                               size="small"
                               onClick={() =>
-                                handleViewDocument(selectedExpense._id)
+                                handleViewDocument(selectedExpense)
                               }
                               sx={{
                                 borderRadius: "6px",
@@ -1908,7 +1840,7 @@ export default function ExpenseIndex() {
                   </Grid>
 
                   {/* Rejection Comments */}
-                  {selectedExpense.comments &&
+                  {selectedExpense.adminComments &&
                     selectedExpense.status === "rejected" && (
                       <Grid item xs={12}>
                         <Alert
@@ -1922,7 +1854,7 @@ export default function ExpenseIndex() {
                             Rejection Reason:
                           </Typography>
                           <Typography variant="body2">
-                            {selectedExpense.comments}
+                            {selectedExpense.adminComments}
                           </Typography>
                         </Alert>
                       </Grid>
