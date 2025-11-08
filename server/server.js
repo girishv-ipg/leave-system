@@ -17,8 +17,14 @@ const {
   getAssetById,
   updateAssetById,
   deleteAssetById,
+  getAllDeviceName,
+  getAllBrandName,
+  createBrand,
+  createDeviceType,
 } = require("./controllers/trackAssets");
 const Assets = require("./models/assets");
+const DeviceType = require("./models/deviceType");
+const Brand = require("./models/brand");
 
 const app = express();
 
@@ -98,6 +104,11 @@ app.get("/api/assets", getAllAssets);
 app.get("/api/assets/:id", getAssetById);
 app.put("/api/assets/:id", updateAssetById);
 app.delete("/api/assets/:id", deleteAssetById);
+app.get("/api/devices", getAllDeviceName);
+app.get("/api/brands", getAllBrandName);
+app.post("/api/add-brand", createBrand);
+app.post("/api/add-device", createDeviceType);
+
 // Use the expense routes (this will mount /api/expenses/* endpoints)
 app.use(expenseRoutes);
 
@@ -110,6 +121,8 @@ app.listen(4000, async () => {
     await User.init();
     await Leave.init();
     await Assets.init();
+    await DeviceType.init();
+    await Brand.init();
     console.log("User and Leave models initialized");
   } catch (err) {
     console.error("Error connecting to MongoDB:", err);

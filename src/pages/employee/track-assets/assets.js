@@ -1,25 +1,6 @@
 // pages/employee/track-assets/index.js
 
 import {
-  Add,
-  Build,
-  CalendarMonth,
-  Cancel,
-  CheckCircle,
-  CurrencyRupee,
-  Delete,
-  Edit,
-  Home,
-  Inventory2,
-  LocationOn,
-  Logout,
-  Person,
-  ReceiptLong,
-  Search,
-  Settings,
-  Tag,
-} from "@mui/icons-material";
-import {
   Alert,
   Avatar,
   Box,
@@ -28,11 +9,7 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Fade,
+  Collapse,
   FormControl,
   Grid,
   IconButton,
@@ -41,6 +18,7 @@ import {
   MenuItem,
   Paper,
   Select,
+  Snackbar,
   Stack,
   Tab,
   Table,
@@ -48,42 +26,77 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   Tabs,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
+import {
+  Build,
+  CalendarMonth,
+  Cancel,
+  CheckCircle,
+  ContentCopy,
+  Home,
+  Info,
+  Inventory2,
+  KeyboardArrowDown,
+  LocationOn,
+  Logout,
+  Numbers,
+  ReceiptLong,
+  Search,
+} from "@mui/icons-material";
+import {
+  CatalogIcon,
+  brandAvatarEl,
+  deviceIconEl,
+  getBrandItem,
+  getDeviceTypeItem,
+  isUrl,
+  looksEmoji,
+  normalizeCatalog,
+} from "@/pages/admin/track-assets/catalogUtils";
 import React, { useEffect, useMemo, useState } from "react";
 
+import AssetDetailsDrawer from "@/pages/admin/track-assets/AssetDetailsDrawer";
 import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
 
-// ----- Constants -------------------------------------------------------------
-const ASSET_TYPES = [
-  "Hardware",
-  "Software",
-  "Furniture",
-  "Vehicle",
-  "Real Estate",
-  "Other",
-];
+// 🔁 Reuse the shared catalog utils from admin
 
+/* ======================= Layout knobs ======================= */
+const ROW_HEIGHT = 10;
+const HEADER_HEIGHT = 44;
+const SUBTABLE_ROW_HEIGHT = 40;
+
+/* ======================= Constants ======================= */
 const STATUS_TABS = [
-  { value: "all", label: "All Assets", icon: <Inventory2 />, color: "primary" },
-  { value: "Active", label: "Active", icon: <CheckCircle />, color: "success" },
-  {
-    value: "In Maintenance",
-    label: "In Maintenance",
-    icon: <Build />,
-    color: "info",
-  },
-  { value: "Retired", label: "Retired", icon: <Settings />, color: "default" },
-  { value: "Lost", label: "Lost", icon: <Cancel />, color: "warning" },
-  { value: "Sold", label: "Sold", icon: <ReceiptLong />, color: "secondary" },
+  { value: "all", label: "My Assets", icon: <Inventory2 /> },
+  { value: "Active", label: "Active", icon: <CheckCircle /> },
+  { value: "In Maintenance", label: "In Maintenance", icon: <Build /> },
+  { value: "Retired", label: "Retired", icon: <ReceiptLong /> },
+  { value: "Lost", label: "Lost", icon: <Cancel /> },
+  { value: "Sold", label: "Sold", icon: <ReceiptLong /> },
 ];
 
-// ----- Helpers ---------------------------------------------------------------
+const STATUS_OPTIONS = ["Active", "In Maintenance", "Retired", "Lost", "Sold"];
+
+/** % widths (sum to 100) */
+const COLUMNS = [
+  { id: "asset", label: "Asset", width: 22 },
+  { id: "type", label: "Type", width: 10 },
+  { id: "serials", label: "Device Serials", width: 14 },
+  { id: "location", label: "Location", width: 12 },
+  { id: "purchase", label: "Purchase", width: 12 },
+  { id: "value", label: "Value", width: 10 },
+  { id: "status", label: "Status", width: 10 },
+  { id: "tags", label: "Tags", width: 10 },
+];
+
+/* ======================= Helpers ======================= */
 const money = (n) =>
   `₹${Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
@@ -140,79 +153,485 @@ const chipForStatus = (status) => {
         },
       };
     default:
-      return { label: status, sx: {} };
+      return { label: status || "-", sx: {} };
   }
 };
 
-const yyyyMmDd = (d) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+const formatShortDate = (d) => {
+  if (!d) return "-";
+  try {
+    const dt = new Date(d);
+    if (isNaN(+dt)) return "-";
+    return dt.toLocaleDateString();
+  } catch {
+    return "-";
+  }
+};
 
-// ----- Component -------------------------------------------------------------
-export default function TrackAssetsPage() {
+// Stable id for expand/collapse state (prevents desync)
+const rowIdOf = (row, fallback) =>
+  String(
+    row?._id ??
+      row?.id ??
+      row?.assetId ??
+      `${row?.name ?? "row"}-${row?.createdAt ?? fallback}`
+  );
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text || "");
+    return true;
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text || "";
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      return true;
+    } catch {
+      document.body.removeChild(ta);
+      return false;
+    }
+  }
+}
+
+/* ======================= Small UI bits ======================= */
+function StatTile({ label, value }) {
+  const palette = {
+    "Total Assets": {
+      color: "#0969da",
+      bg: "linear-gradient(135deg,#dbeafe 0%,#f0f9ff 100%)",
+    },
+    "Total Value": {
+      color: "#1a7f37",
+      bg: "linear-gradient(135deg,#dcfce7 0%,#f0fdf4 100%)",
+    },
+    Active: {
+      color: "#0ea5e9",
+      bg: "linear-gradient(135deg,#e0f2fe 0%,#f0f9ff 100%)",
+    },
+    "In Maintenance": {
+      color: "#bf8700",
+      bg: "linear-gradient(135deg,#fef3c7 0%,#fffbeb 100%)",
+    },
+    "Retired/Lost/Sold": {
+      color: "#64748b",
+      bg: "linear-gradient(135deg,#f1f5f9 0%,#ffffff 100%)",
+    },
+  }[label] || {
+    color: "#111827",
+    bg: "linear-gradient(135deg,#f3f4f6 0%,#ffffff 100%)",
+  };
+
+  return (
+    <Card
+      elevation={0}
+      sx={{
+        borderRadius: "12px",
+        background: palette.bg,
+        border: `1px solid ${palette.color}20`,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+        transition: "all .25s ease",
+        "&:hover": {
+          boxShadow: `0 6px 12px ${palette.color}30`,
+          borderColor: `${palette.color}50`,
+        },
+      }}
+    >
+      <CardContent sx={{ p: 2 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            display: "block",
+            fontWeight: 600,
+            color: palette.color,
+            mb: 0.25,
+          }}
+        >
+          {label}
+        </Typography>
+        <Typography
+          variant="h6"
+          noWrap
+          sx={{
+            fontWeight: 800,
+            color: palette.color,
+            fontSize: "1.35rem",
+            lineHeight: 1.2,
+            fontFamily: '"SF Mono","Monaco", monospace',
+          }}
+          title={String(value)}
+        >
+          {value ?? "—"}
+        </Typography>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmptyState() {
+  return (
+    <Card
+      elevation={1}
+      sx={{
+        borderRadius: "12px",
+        border: "1px solid #e1e4e8",
+        textAlign: "center",
+        py: 8,
+        backgroundColor: "white",
+        mb: 3,
+      }}
+    >
+      <CardContent>
+        <Inventory2 sx={{ fontSize: 64, color: "text.secondary", mb: 3 }} />
+        <Typography variant="h6" color="text.secondary" gutterBottom>
+          No assets found
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Try adjusting filters.
+        </Typography>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ======================= Collapsible Serials Subtable ======================= */
+function CollapsibleSerialsRow({
+  row,
+  serials,
+  isOpen,
+  COLUMNS,
+  ROW_HEIGHT,
+  SUBTABLE_ROW_HEIGHT,
+  deviceTypes,
+  brands,
+  setSnack,
+}) {
+  // If closed, render nothing (prevents stray space/content)
+  if (!isOpen) return null;
+
+  const startIndex = Math.max(
+    0,
+    COLUMNS.findIndex((c) => c.id === "asset")
+  );
+  const spacerColspan = Math.max(0, startIndex);
+  const contentColspan = Math.max(1, COLUMNS.length - spacerColspan);
+
+  return (
+    <TableRow sx={{ height: ROW_HEIGHT }}>
+      {spacerColspan > 0 && (
+        <TableCell colSpan={spacerColspan} sx={{ p: 0, border: 0 }} />
+      )}
+
+      <TableCell colSpan={contentColspan} sx={{ p: 0, border: 0 }}>
+        <Box
+          sx={{
+            my: 1,
+            border: "1px solid #e5e7eb",
+            borderRadius: 2,
+            overflow: "hidden",
+          }}
+        >
+          {/* Header */}
+          <Box
+            sx={{
+              px: 2,
+              py: 1,
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+              background:
+                "linear-gradient(90deg, rgba(2,132,199,.08), rgba(2,132,199,.02))",
+              borderBottom: "1px solid #e5e7eb",
+            }}
+          >
+            <Info sx={{ fontSize: 18, color: "primary.main" }} />
+            <Typography variant="subtitle2" fontWeight={800}>
+              Device details ({serials.length})
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+              Device Type, Brand, Serial, Notes & Added On
+            </Typography>
+          </Box>
+
+          {/* Empty state inside subtable */}
+          {serials.length === 0 ? (
+            <Box sx={{ p: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                No serials for this asset.
+              </Typography>
+            </Box>
+          ) : (
+            <Box sx={{ width: "100%", overflowX: "auto" }}>
+              <Table
+                size="small"
+                sx={{
+                  minWidth: 900,
+                  borderCollapse: "separate",
+                  borderSpacing: 0,
+                  "& td, & th": {
+                    py: "10px",
+                    lineHeight: 1.35,
+                    whiteSpace: "nowrap",
+                  },
+                  "& .MuiTableRow-root": { height: SUBTABLE_ROW_HEIGHT },
+                  "& thead th": {
+                    fontWeight: 700,
+                    backgroundColor: "#f8fafc",
+                    borderBottom: "1px solid #e5e7eb",
+                    fontSize: ".86rem",
+                  },
+                  "& tbody tr:nth-of-type(odd)": {
+                    backgroundColor: "#fbfdff",
+                  },
+                }}
+              >
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Device Type</TableCell>
+                    <TableCell>Brand</TableCell>
+                    <TableCell>Serial</TableCell>
+                    <TableCell>Notes</TableCell>
+                    <TableCell>Added On</TableCell>
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+
+                <TableBody>
+                  {serials.map((s, idx) => {
+                    const dt = getDeviceTypeItem(s, deviceTypes);
+                    const br = getBrandItem(s, brands);
+                    const addedOn =
+                      s.createdAt || row.createdAt || row.updatedAt;
+
+                    return (
+                      <TableRow key={`${rowIdOf(row, idx)}-sn-${idx}`}>
+                        {/* Device Type */}
+                        <TableCell>
+                          <Stack
+                            direction="row"
+                            spacing={0.6}
+                            alignItems="center"
+                          >
+                            {isUrl(dt.icon) || looksEmoji(dt.icon) ? (
+                              <CatalogIcon
+                                item={dt}
+                                fallbackColor="#2563eb"
+                                size={18}
+                              />
+                            ) : (
+                              <Box
+                                sx={{ display: "flex", alignItems: "center" }}
+                              >
+                                {deviceIconEl(dt.name)}
+                              </Box>
+                            )}
+                            <Typography variant="body2" noWrap title={dt.name}>
+                              {dt.name || "-"}
+                            </Typography>
+                          </Stack>
+                        </TableCell>
+
+                        {/* Brand */}
+                        <TableCell>
+                          <Stack
+                            direction="row"
+                            spacing={0.6}
+                            alignItems="center"
+                          >
+                            {isUrl(br.icon) || looksEmoji(br.icon) ? (
+                              <CatalogIcon
+                                item={br}
+                                fallbackColor="#16a34a"
+                                size={18}
+                              />
+                            ) : (
+                              <Box
+                                sx={{ display: "flex", alignItems: "center" }}
+                              >
+                                {brandAvatarEl(br.name)}
+                              </Box>
+                            )}
+                            <Typography variant="body2" noWrap title={br.name}>
+                              {br.name || "-"}
+                            </Typography>
+                          </Stack>
+                        </TableCell>
+
+                        {/* Serial */}
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            icon={<Numbers sx={{ fontSize: 16 }} />}
+                            label={
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  fontFamily: '"SF Mono","Monaco", monospace',
+                                }}
+                              >
+                                {s.serial || "-"}
+                              </Typography>
+                            }
+                            sx={{
+                              borderStyle: "dashed",
+                              borderColor: "#94a3b8",
+                            }}
+                          />
+                        </TableCell>
+
+                        {/* Notes */}
+                        <TableCell>
+                          <Typography
+                            variant="body2"
+                            color={s.notes ? "text.primary" : "text.secondary"}
+                            noWrap
+                            title={s.notes || "—"}
+                          >
+                            {s.notes || "—"}
+                          </Typography>
+                        </TableCell>
+
+                        {/* Added On */}
+                        <TableCell sx={{ whiteSpace: "nowrap" }}>
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            noWrap
+                          >
+                            {formatShortDate(addedOn)}
+                          </Typography>
+                        </TableCell>
+
+                        {/* Actions (copy only) */}
+                        <TableCell align="right">
+                          <Tooltip title="Copy serial">
+                            <IconButton
+                              size="small"
+                              onClick={async () => {
+                                if (await copyToClipboard(s.serial || "")) {
+                                  setSnack({
+                                    open: true,
+                                    msg: "Serial copied",
+                                  });
+                                }
+                              }}
+                            >
+                              <ContentCopy fontSize="inherit" />
+                            </IconButton>
+                          </Tooltip>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </Box>
+          )}
+        </Box>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/* ======================= PAGE ======================= */
+export default function EmployeeTrackAssetsPage() {
   const router = useRouter();
 
-  // session/user (optional header card like your expenses page)
   const [currentUser, setCurrentUser] = useState(null);
-
-  // data
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
 
-  // UI state
-  const [activeTab, setActiveTab] = useState("all");
+  const [deviceTypes, setDeviceTypes] = useState([]);
+  const [brands, setBrands] = useState([]);
 
-  // filters
-  const [q, setQ] = useState(""); // search (name / serial / tags)
-  const [filterType, setFilterType] = useState(""); // asset type
-  const [filterStatus, setFilterStatus] = useState(""); // status (optional alongside tabs)
+  const [snack, setSnack] = useState({ open: false, msg: "" });
+
+  const [activeTab, setActiveTab] = useState("all");
+  const [q, setQ] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
   const [filterLocation, setFilterLocation] = useState("");
   const [filterYear, setFilterYear] = useState("");
 
-  // dialog state (create/edit)
-  const freshForm = {
-    _id: null,
-    name: "",
-    type: "",
-    description: "",
-    serialNumber: "",
-    purchaseDate: "",
-    location: "",
-    value: "",
-    status: "Active",
-    assignedTo: "",
-    tags: "",
-  };
-  const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState(freshForm);
-  const [saving, setSaving] = useState(false);
-  const isEdit = !!form._id;
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
-  // effects
+  const [expanded, setExpanded] = useState(() => new Set());
+
+  // Drawer state
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsAsset, setDetailsAsset] = useState(null);
+  const openDetails = (row) => {
+    setDetailsAsset(row);
+    setDetailsOpen(true);
+  };
+
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     setCurrentUser(user);
     fetchAssets();
+    fetchCatalog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    setPage(0);
+  }, [activeTab, q, filterStatus, filterLocation, filterYear]);
+
+  const fetchCatalog = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      const [dtRes, brRes] = await Promise.allSettled([
+        axiosInstance.get("/api/devices", headers ? { headers } : undefined),
+        axiosInstance.get("/api/brands", headers ? { headers } : undefined),
+      ]);
+      if (dtRes.status === "fulfilled") {
+        const rows = dtRes.value?.data?.data ?? dtRes.value?.data ?? [];
+        setDeviceTypes(normalizeCatalog(rows));
+      } else setDeviceTypes([]);
+      if (brRes.status === "fulfilled") {
+        const rows = brRes.value?.data?.data ?? brRes.value?.data ?? [];
+        setBrands(normalizeCatalog(rows));
+      } else setBrands([]);
+    } catch (e) {
+      setDeviceTypes([]);
+      setBrands([]);
+      console.error("Catalog fetch failed", e);
+    }
+  };
 
   const fetchAssets = async () => {
     try {
       setLoading(true);
       setErr(null);
+
       const token = localStorage.getItem("token");
       if (!token) {
         setErr("Please login first");
         return;
       }
+
       const user = JSON.parse(localStorage.getItem("user") || "{}");
 
+      // API should return assets owned by the employee
       const res = await axiosInstance.get("/api/assets", {
         headers: { Authorization: `Bearer ${token}` },
         params: {
-          employeeCode: user.employeeCode, // for employees
-          role: user.role, // admin / manager / employee
+          employeeCode: user.employeeCode,
+          role: user.role,
         },
       });
+
       setAssets(res.data || []);
+      setExpanded(new Set());
+      setPage(0);
     } catch (e) {
       console.error(e);
       setErr("Failed to load assets. Please try again.");
@@ -221,100 +640,24 @@ export default function TrackAssetsPage() {
     }
   };
 
-  const openNew = () => {
-    setForm(freshForm);
-    setFormOpen(true);
-  };
-
-  const openEdit = (row) => {
-    setForm({
-      _id: row._id,
-      name: row.name || "",
-      type: row.type || "",
-      description: row.description || "",
-      serialNumber: row.serialNumber || "",
-      purchaseDate: yyyyMmDd(row.purchaseDate) || "",
-      location: row.location || "",
-      value: String(row.value ?? ""),
-      status: row.status || "Active",
-      assignedTo: row.assignedTo || "",
-      tags: Array.isArray(row.tags) ? row.tags.join(", ") : row.tags || "",
+  const toggleExpand = (row) => {
+    const id = rowIdOf(row, 0);
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
     });
-    setFormOpen(true);
   };
 
-  const onSave = async () => {
-    try {
-      setSaving(true);
-      const token = localStorage.getItem("token");
-      const payload = {
-        name: form.name,
-        type: form.type,
-        description: form.description,
-        serialNumber: form.serialNumber || null,
-        purchaseDate: form.purchaseDate || null,
-        location: form.location,
-        value: form.value ? Number(form.value) : 0,
-        status: form.status,
-        assignedTo: form.assignedTo || null,
-        tags: form.tags
-          ? form.tags
-              .split(",")
-              .map((t) => t.trim())
-              .filter(Boolean)
-          : [],
-      };
-
-      if (isEdit) {
-        await axiosInstance.put(`/api/assets/${form._id}`, payload, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      } else {
-        await axiosInstance.post(`/api/assets`, payload, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
-
-      setFormOpen(false);
-      setForm(freshForm);
-      fetchAssets();
-    } catch (e) {
-      console.error(e);
-      setErr("Failed to save asset. Please check details and retry.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const onDelete = async (row) => {
-    if (!confirm(`Soft delete asset "${row.name}"?`)) return;
-    try {
-      const token = localStorage.getItem("token");
-      await axiosInstance.delete(`/api/assets/${row._id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      fetchAssets();
-    } catch (e) {
-      console.error(e);
-      setErr("Failed to delete asset.");
-    }
-  };
-
-  // filter + tab logic
+  // filtering
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return assets
       .filter((a) => {
-        // tab filter
         if (activeTab !== "all" && a.status !== activeTab) return false;
 
-        // status filter (optional alongside tabs)
         if (filterStatus && a.status !== filterStatus) return false;
 
-        // type
-        if (filterType && a.type !== filterType) return false;
-
-        // location
         if (
           filterLocation &&
           !String(a.location || "")
@@ -323,55 +666,67 @@ export default function TrackAssetsPage() {
         )
           return false;
 
-        // purchase year
         if (filterYear) {
           const d = a.purchaseDate ? new Date(a.purchaseDate) : null;
           if (!d || isNaN(d) || d.getFullYear() !== Number(filterYear))
             return false;
         }
 
-        // search by name / serial / tags
         if (needle) {
           const inName = String(a.name || "")
             .toLowerCase()
             .includes(needle);
-          const inSerial = String(a.serialNumber || "")
-            .toLowerCase()
-            .includes(needle);
+          const inSerial =
+            Array.isArray(a.serialNumbers) &&
+            a.serialNumbers.some((s) =>
+              String(s.serial || "")
+                .toLowerCase()
+                .includes(needle)
+            );
           const inTags = (a.tags || [])
             .join(",")
             .toLowerCase()
             .includes(needle);
           if (!inName && !inSerial && !inTags) return false;
         }
-
         return true;
       })
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  }, [
-    assets,
-    activeTab,
-    q,
-    filterType,
-    filterStatus,
-    filterLocation,
-    filterYear,
-  ]);
+  }, [assets, activeTab, q, filterStatus, filterLocation, filterYear]);
 
-  // quick stats
+  // pagination
+  const start = page * rowsPerPage;
+  const end = start + rowsPerPage;
+  const pageItems = filtered.slice(start, end);
+
+  // summary tiles
   const totals = useMemo(() => {
     const totalValue = assets.reduce(
       (acc, a) => acc + (Number(a.value) || 0),
       0
     );
-    const byStatus = assets.reduce((acc, a) => {
-      acc[a.status] = (acc[a.status] || 0) + 1;
-      return acc;
-    }, {});
-    return { totalValue, count: assets.length, byStatus };
+    const active = assets.filter((a) => a.status === "Active").length;
+    const maintenance = assets.filter(
+      (a) => a.status === "In Maintenance"
+    ).length;
+    const retiredLostSold = assets.filter((a) =>
+      ["Retired", "Lost", "Sold"].includes(a.status)
+    ).length;
+    return {
+      totalValue,
+      count: assets.length,
+      active,
+      maintenance,
+      retiredLostSold,
+    };
   }, [assets]);
 
-  // UI guards
+  const handleChangePage = (_e, newPage) => setPage(newPage);
+  const handleChangeRowsPerPage = (e) => {
+    setRowsPerPage(parseInt(e.target.value, 10));
+    setPage(0);
+  };
+
   if (loading) {
     return (
       <Box
@@ -401,10 +756,9 @@ export default function TrackAssetsPage() {
     );
   }
 
-  // ----- RENDER --------------------------------------------------------------
   return (
     <Box sx={{ minHeight: "100vh", backgroundColor: "#fafbfc" }}>
-      {/* Sticky header (same vibe as expenses) */}
+      {/* Sticky header */}
       <Box
         sx={{
           position: "sticky",
@@ -416,7 +770,7 @@ export default function TrackAssetsPage() {
           boxShadow: "0 8px 32px rgba(0,0,0,0.1)",
         }}
       >
-        <Box sx={{ maxWidth: 1200, mx: "auto", px: 3, py: 2.5 }}>
+        <Box sx={{ px: { xs: 2, md: 3, lg: 4 }, py: 2.5 }}>
           <Box
             sx={{
               display: "flex",
@@ -426,31 +780,22 @@ export default function TrackAssetsPage() {
           >
             <Box sx={{ display: "flex", alignItems: "center" }}>
               <Avatar
-                sx={{
-                  width: 40,
-                  height: 40,
-                  mr: 3,
-                  background: "linear-gradient(135deg, #3367e09c 0%)",
-                }}
+                sx={{ width: 40, height: 40, mr: 3, bgcolor: "primary.main" }}
               >
                 <Inventory2 />
               </Avatar>
               <Box>
                 <Typography
                   variant="h5"
-                  sx={{
-                    fontWeight: 700,
-                    color: "text.primary",
-                    lineHeight: 1.2,
-                  }}
+                  sx={{ fontWeight: 700, lineHeight: 1.2 }}
                 >
-                  Track Assets
+                  My Assets
                 </Typography>
                 <Typography
                   variant="body2"
                   sx={{ color: "text.secondary", mt: 0.5 }}
                 >
-                  Manage hardware, software, and more
+                  View the assets assigned to you
                 </Typography>
               </Box>
             </Box>
@@ -470,6 +815,7 @@ export default function TrackAssetsPage() {
                   <Home />
                 </IconButton>
               </Tooltip>
+
               <Tooltip title="Logout" arrow>
                 <IconButton
                   onClick={() => {
@@ -488,33 +834,6 @@ export default function TrackAssetsPage() {
                   <Logout />
                 </IconButton>
               </Tooltip>
-              <Button
-                variant="contained"
-                startIcon={
-                  <Add
-                    sx={{
-                      transition: "transform 0.3s ease",
-                      ".MuiButton-root:hover &": {
-                        transform: "rotate(180deg)",
-                      },
-                    }}
-                  />
-                }
-                onClick={openNew}
-                sx={{
-                  borderRadius: "8px",
-                  fontWeight: 600,
-                  transition: "all 0.2s ease",
-                  "&:hover": {
-                    transform: "translateY(-1px)",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.16)",
-                  },
-                  background: "linear-gradient(135deg, #3367e09c 0%)",
-                }}
-              >
-                New Asset
-              </Button>
-
               {currentUser && (
                 <Avatar
                   sx={{
@@ -523,9 +842,6 @@ export default function TrackAssetsPage() {
                     ml: 2,
                     fontSize: "0.875rem",
                     fontWeight: 600,
-                    cursor: "pointer",
-                    transition: "all 0.2s ease",
-                    boxShadow: "rgba(0, 0, 0, 0.15) 0px 2px 4px 0px inset",
                   }}
                 >
                   {currentUser.name
@@ -534,7 +850,7 @@ export default function TrackAssetsPage() {
                         .map((n) => n[0])
                         .join("")
                         .toUpperCase()
-                    : "U"}
+                    : "A"}
                 </Avatar>
               )}
             </Box>
@@ -542,117 +858,24 @@ export default function TrackAssetsPage() {
         </Box>
       </Box>
 
-      <Box sx={{ maxWidth: 1200, mx: "auto", px: 2, pb: 3 }}>
-        {/* Summary Cards */}
-        <Grid container spacing={2} sx={{ mt: 2, mb: 3 }}>
+      {/* Main content */}
+      <Box sx={{ px: { xs: 2, md: 3, lg: 4 }, pb: 3 }}>
+        {/* Summary tiles */}
+        <Grid container spacing={2} sx={{ mt: 2, mb: 2 }}>
           {[
-            {
-              label: "Total Assets",
-              value: totals.count,
-              icon: Inventory2,
-              color: "#0969da",
-              bg: "linear-gradient(135deg, #dbeafe 0%, #f0f9ff 100%)",
-            },
-            {
-              label: "Total Value",
-              value: money(totals.totalValue),
-              icon: CurrencyRupee,
-              color: "#1a7f37",
-              bg: "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
-            },
-            {
-              label: "Active",
-              value: totals.byStatus["Active"] || 0,
-              icon: CheckCircle,
-              color: "#0ea5e9",
-              bg: "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
-            },
-            {
-              label: "In Maintenance",
-              value: totals.byStatus["In Maintenance"] || 0,
-              icon: Build,
-              color: "#bf8700",
-              bg: "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
-            },
-            {
-              label: "Retired/Lost/Sold",
-              value:
-                (totals.byStatus["Retired"] || 0) +
-                (totals.byStatus["Lost"] || 0) +
-                (totals.byStatus["Sold"] || 0),
-              icon: Settings,
-              color: "#64748b",
-              bg: "linear-gradient(135deg, #f1f5f9 0%, #ffffff 100%)",
-            },
+            { label: "Total Assets", value: totals.count },
+            { label: "Total Value", value: money(totals.totalValue) },
+            { label: "Active", value: totals.active },
+            { label: "In Maintenance", value: totals.maintenance },
+            { label: "Retired/Lost/Sold", value: totals.retiredLostSold },
           ].map((stat, i) => (
-            <Grid item xs={6} sm={2.4} key={i}>
-              <Fade in timeout={300 + i * 100}>
-                <Card
-                  elevation={1}
-                  sx={{
-                    borderRadius: "8px",
-                    background: stat.bg,
-                    border: `1px solid ${stat.color}20`,
-                    transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)",
-                    cursor: "pointer",
-                    "&:hover": {
-                      transform: "translateY(-4px) scale(1.02)",
-                      boxShadow: `0 20px 40px ${stat.color}20`,
-                      borderColor: `${stat.color}40`,
-                    },
-                  }}
-                >
-                  <CardContent sx={{ p: 2.5, textAlign: "center" }}>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        mb: 1.5,
-                      }}
-                    >
-                      <stat.icon
-                        sx={{
-                          fontSize: 20,
-                          color: stat.color,
-                          mr: 1,
-                          transition: "transform 0.2s ease",
-                          ".MuiCard-root:hover &": { transform: "scale(1.1)" },
-                        }}
-                      />
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          fontWeight: 600,
-                          color: stat.color,
-                          fontSize: "0.75rem",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.5px",
-                        }}
-                      >
-                        {stat.label}
-                      </Typography>
-                    </Box>
-                    <Typography
-                      variant="h5"
-                      sx={{
-                        fontWeight: 700,
-                        color: stat.color,
-                        fontSize: "1.5rem",
-                        lineHeight: 1,
-                        fontFamily: '"SF Mono","Monaco", monospace',
-                      }}
-                    >
-                      {typeof stat.value === "number" ? stat.value : stat.value}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Fade>
+            <Grid item xs={6} sm={4} md={2.4} key={i}>
+              <StatTile label={stat.label} value={stat.value} />
             </Grid>
           ))}
         </Grid>
 
-        {/* Tabs + Filters row */}
+        {/* Tabs + Filters */}
         <Card
           elevation={0}
           sx={{
@@ -681,12 +904,10 @@ export default function TrackAssetsPage() {
                 flex: 1,
                 minWidth: 0,
                 "& .MuiTab-root": {
-                  minHeight: 60,
+                  minHeight: 48,
                   fontWeight: 600,
                   textTransform: "none",
                   fontSize: "0.875rem",
-                  transition: "all 0.2s ease",
-                  "&:hover": { transform: "translateY(-1px)" },
                 },
                 "& .Mui-selected": { color: "#0969da" },
                 "& .MuiTabs-indicator": {
@@ -709,7 +930,7 @@ export default function TrackAssetsPage() {
               ))}
             </Tabs>
 
-            {/* Right-aligned Filters */}
+            {/* Filters */}
             <Box
               sx={{
                 ml: "auto",
@@ -736,23 +957,7 @@ export default function TrackAssetsPage() {
                 sx={{ width: 240 }}
               />
 
-              <FormControl size="small" sx={{ minWidth: 160 }}>
-                <InputLabel>Type</InputLabel>
-                <Select
-                  value={filterType}
-                  label="Type"
-                  onChange={(e) => setFilterType(e.target.value)}
-                >
-                  <MenuItem value="">Any</MenuItem>
-                  {ASSET_TYPES.map((t) => (
-                    <MenuItem key={t} value={t}>
-                      {t}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
-              <FormControl size="small" sx={{ minWidth: 160 }}>
+              <FormControl size="small" sx={{ minWidth: 150 }}>
                 <InputLabel>Status</InputLabel>
                 <Select
                   value={filterStatus}
@@ -760,13 +965,11 @@ export default function TrackAssetsPage() {
                   onChange={(e) => setFilterStatus(e.target.value)}
                 >
                   <MenuItem value="">Any</MenuItem>
-                  {["Active", "In Maintenance", "Retired", "Lost", "Sold"].map(
-                    (s) => (
-                      <MenuItem key={s} value={s}>
-                        {s}
-                      </MenuItem>
-                    )
-                  )}
+                  {STATUS_OPTIONS.map((s) => (
+                    <MenuItem key={s} value={s}>
+                      {s}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
 
@@ -775,460 +978,331 @@ export default function TrackAssetsPage() {
                 label="Location"
                 value={filterLocation}
                 onChange={(e) => setFilterLocation(e.target.value)}
-                sx={{ width: 160 }}
+                sx={{ width: 150 }}
               />
 
               <TextField
                 size="small"
-                label="Purchase Year"
+                label="Year"
                 type="number"
                 inputProps={{ min: 1900, max: 3000, step: 1 }}
                 value={filterYear}
                 onChange={(e) => setFilterYear(e.target.value)}
-                sx={{ width: 150 }}
+                sx={{ width: 120 }}
               />
             </Box>
           </Box>
         </Card>
 
-        {/* Table */}
-        {filtered.length === 0 ? (
-          <Fade in timeout={500}>
-            <Card
-              elevation={1}
+        {/* Assets Table */}
+        <Card
+          elevation={0}
+          sx={{
+            borderRadius: "12px",
+            backgroundColor: "white",
+            border: "1px solid #e1e4e8",
+            mb: 3,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 300,
+          }}
+        >
+          <TableContainer
+            component={Paper}
+            elevation={0}
+            sx={{ flex: 1, overflowX: "auto", pb: 0.5 }}
+          >
+            <Table
+              size="small"
               sx={{
-                borderRadius: "12px",
-                border: "1px solid #e1e4e8",
-                textAlign: "center",
-                py: 8,
-                backgroundColor: "white",
+                tableLayout: "fixed",
+                width: "100%",
+                borderCollapse: "collapse",
+                "& .MuiTableRow-root": { height: ROW_HEIGHT },
+                "& .MuiChip-sizeSmall": {
+                  height: 20,
+                  "& .MuiChip-label": { px: 0.7, fontSize: 12 },
+                },
+                "& .MuiAvatar-root": { width: 24, height: 24, fontSize: 12 },
               }}
             >
-              <CardContent>
-                <Inventory2
-                  sx={{ fontSize: 64, color: "text.secondary", mb: 3 }}
-                />
-                <Typography variant="h6" color="text.secondary" gutterBottom>
-                  No assets found
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mb: 4 }}
-                >
-                  Try adjusting filters or create a new asset.
-                </Typography>
-                <Button
-                  variant="contained"
-                  startIcon={<Add />}
-                  onClick={openNew}
-                  sx={{
-                    borderRadius: "8px",
-                    fontWeight: 600,
-                    transition: "all 0.2s ease",
-                    background: "linear-gradient(135deg, #3367e09c 0%)",
-                    "&:hover": { transform: "translateY(-1px)" },
-                  }}
-                >
-                  Add Asset
-                </Button>
-              </CardContent>
-            </Card>
-          </Fade>
-        ) : (
-          <Card
-            elevation={0}
-            sx={{
-              borderRadius: "12px",
-              backgroundColor: "white",
-              border: "1px solid #e1e4e8",
-            }}
-          >
-            <TableContainer component={Paper} elevation={0}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow sx={{ bgcolor: "grey.50" }}>
-                    {[
-                      "Name",
-                      "Type",
-                      "Serial",
-                      "Location",
-                      "Purchase",
-                      "Value",
-                      "Status",
-                      "Assigned To",
-                      "Tags",
-                      "Actions",
-                    ].map((h) => (
-                      <TableCell key={h} sx={{ fontWeight: 600 }}>
-                        {h}
-                      </TableCell>
-                    ))}
+              <colgroup>
+                {COLUMNS.map((c) => (
+                  <col key={c.id} style={{ width: `${c.width}%` }} />
+                ))}
+              </colgroup>
+
+              <TableHead>
+                <TableRow sx={{ bgcolor: "grey.50", height: HEADER_HEIGHT }}>
+                  {COLUMNS.map((c) => (
+                    <TableCell
+                      key={c.id}
+                      sx={{
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {c.label ? (
+                        <Tooltip title={c.label}>
+                          <span>{c.label}</span>
+                        </Tooltip>
+                      ) : null}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+
+              <TableBody>
+                {pageItems.length === 0 ? (
+                  <TableRow sx={{ height: ROW_HEIGHT }}>
+                    <TableCell
+                      colSpan={COLUMNS.length}
+                      sx={{ p: 0, border: 0 }}
+                    >
+                      <Box sx={{ py: 4 }}>
+                        <EmptyState />
+                      </Box>
+                    </TableCell>
                   </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filtered.map((row) => {
-                    const st = chipForStatus(row.status);
-                    return (
-                      <TableRow hover key={row._id}>
-                        <TableCell>
-                          <Stack
-                            direction="row"
-                            alignItems="center"
-                            spacing={1}
-                          >
-                            <Avatar
+                ) : (
+                  <>
+                    {pageItems.map((row, idx) => {
+                      const rowId = rowIdOf(row, idx);
+                      const isOpen = expanded.has(rowId);
+                      const serials = Array.isArray(row.serialNumbers)
+                        ? row.serialNumbers
+                        : [];
+                      const st = chipForStatus(row.status);
+
+                      return (
+                        <React.Fragment key={rowId}>
+                          <TableRow hover sx={{ height: ROW_HEIGHT }}>
+                            {/* asset (click to open drawer) */}
+                            <TableCell>
+                              <Stack
+                                direction="row"
+                                alignItems="center"
+                                spacing={0.5}
+                              >
+                                <Tooltip title="View details">
+                                  <Avatar
+                                    onClick={() => openDetails(row)}
+                                    sx={{
+                                      width: 24,
+                                      height: 24,
+                                      bgcolor: "primary.main",
+                                      fontSize: 12,
+                                      fontWeight: 600,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {String(row.name || "?")
+                                      .slice(0, 1)
+                                      .toUpperCase()}
+                                  </Avatar>
+                                </Tooltip>
+
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Tooltip title="View details" arrow>
+                                    <Typography
+                                      variant="body2"
+                                      fontWeight={600}
+                                      sx={{
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                        display: "block",
+                                        cursor: "pointer",
+                                        "&:hover": {
+                                          textDecoration: "underline",
+                                          color: "primary.main",
+                                        },
+                                      }}
+                                      onClick={() => openDetails(row)}
+                                      title={row.name || "-"}
+                                    >
+                                      {row.name || "-"}
+                                    </Typography>
+                                  </Tooltip>
+
+                                  <Tooltip title={String(row._id || "")} arrow>
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{ display: "block" }}
+                                    >
+                                      #{(row._id || "").toString().slice(-6)}
+                                    </Typography>
+                                  </Tooltip>
+                                </Box>
+                              </Stack>
+                            </TableCell>
+
+                            {/* type */}
+                            <TableCell>{row.type || "-"}</TableCell>
+
+                            {/* serials */}
+                            <TableCell>
+                              <Stack
+                                direction="row"
+                                alignItems="center"
+                                spacing={0.5}
+                              >
+                                <IconButton
+                                  size="small"
+                                  onClick={() => toggleExpand(row)}
+                                  sx={{
+                                    border: "1px solid #e5e7eb",
+                                    p: 0.5,
+                                    transition: "transform .18s ease",
+                                    transform: isOpen
+                                      ? "rotate(180deg)"
+                                      : "none",
+                                  }}
+                                  aria-expanded={isOpen}
+                                  aria-controls={`serials-${rowId}`}
+                                >
+                                  <KeyboardArrowDown fontSize="small" />
+                                </IconButton>
+                                <Chip
+                                  size="small"
+                                  label={`${serials.length} Device${
+                                    serials.length === 1 ? "" : "s"
+                                  }`}
+                                />
+                              </Stack>
+                            </TableCell>
+
+                            {/* location */}
+                            <TableCell>
+                              <Stack
+                                direction="row"
+                                spacing={0.4}
+                                alignItems="center"
+                              >
+                                <LocationOn
+                                  fontSize="small"
+                                  sx={{ opacity: 0.7 }}
+                                />
+                                <Typography variant="body2">
+                                  {row.location || "-"}
+                                </Typography>
+                              </Stack>
+                            </TableCell>
+
+                            {/* purchase */}
+                            <TableCell>
+                              <Stack
+                                direction="row"
+                                spacing={0.4}
+                                alignItems="center"
+                              >
+                                <CalendarMonth
+                                  fontSize="small"
+                                  sx={{ opacity: 0.7 }}
+                                />
+                                <Typography variant="body2">
+                                  {formatShortDate(row.purchaseDate)}
+                                </Typography>
+                              </Stack>
+                            </TableCell>
+
+                            {/* value */}
+                            <TableCell>
+                              <Typography
+                                variant="body2"
+                                fontWeight={600}
+                                sx={{
+                                  fontFamily: '"SF Mono","Monaco", monospace',
+                                }}
+                              >
+                                {money(row.value)}
+                              </Typography>
+                            </TableCell>
+
+                            {/* status */}
+                            <TableCell>
+                              <Chip
+                                size="small"
+                                label={st.label}
+                                sx={{ borderRadius: "20px", ...st.sx }}
+                              />
+                            </TableCell>
+
+                            {/* tags */}
+                            <TableCell
                               sx={{
-                                width: 28,
-                                height: 28,
-                                bgcolor: "primary.main",
-                                fontSize: 14,
-                                fontWeight: 600,
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
                               }}
                             >
-                              {String(row.name || "?")
-                                .slice(0, 1)
-                                .toUpperCase()}
-                            </Avatar>
-                            <Typography variant="body2" fontWeight={600}>
-                              {row.name}
-                            </Typography>
-                          </Stack>
-                        </TableCell>
-                        <TableCell>{row.type}</TableCell>
-                        <TableCell>
-                          <Stack
-                            direction="row"
-                            spacing={0.5}
-                            alignItems="center"
-                          >
-                            <Tag fontSize="small" sx={{ opacity: 0.7 }} />
-                            <Typography variant="body2">
-                              {row.serialNumber || "-"}
-                            </Typography>
-                          </Stack>
-                        </TableCell>
-                        <TableCell>
-                          <Stack
-                            direction="row"
-                            spacing={0.5}
-                            alignItems="center"
-                          >
-                            <LocationOn
-                              fontSize="small"
-                              sx={{ opacity: 0.7 }}
-                            />
-                            <Typography variant="body2">
-                              {row.location || "-"}
-                            </Typography>
-                          </Stack>
-                        </TableCell>
-                        <TableCell>
-                          <Stack
-                            direction="row"
-                            spacing={0.5}
-                            alignItems="center"
-                          >
-                            <CalendarMonth
-                              fontSize="small"
-                              sx={{ opacity: 0.7 }}
-                            />
-                            <Typography variant="body2">
-                              {row.purchaseDate
-                                ? new Date(
-                                    row.purchaseDate
-                                  ).toLocaleDateString()
-                                : "-"}
-                            </Typography>
-                          </Stack>
-                        </TableCell>
-                        <TableCell>
-                          <Typography
-                            variant="body2"
-                            fontWeight={600}
-                            sx={{ fontFamily: '"SF Mono","Monaco", monospace' }}
-                          >
-                            {money(row.value)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            size="small"
-                            label={st.label}
-                            sx={{ borderRadius: "20px", ...st.sx }}
+                              <Tooltip
+                                title={(row.tags || []).join(", ")}
+                                placement="top"
+                              >
+                                <Typography variant="body2" noWrap>
+                                  {Array.isArray(row.tags) && row.tags.length
+                                    ? row.tags.join(", ")
+                                    : "-"}
+                                </Typography>
+                              </Tooltip>
+                            </TableCell>
+                          </TableRow>
+
+                          {/* Collapsible row — rendered only when open */}
+                          <CollapsibleSerialsRow
+                            row={row}
+                            serials={serials}
+                            isOpen={isOpen}
+                            COLUMNS={COLUMNS}
+                            ROW_HEIGHT={ROW_HEIGHT}
+                            SUBTABLE_ROW_HEIGHT={SUBTABLE_ROW_HEIGHT}
+                            deviceTypes={deviceTypes}
+                            brands={brands}
+                            setSnack={setSnack}
                           />
-                        </TableCell>
-                        <TableCell>
-                          <Stack
-                            direction="row"
-                            spacing={0.5}
-                            alignItems="center"
-                          >
-                            <Person fontSize="small" sx={{ opacity: 0.7 }} />
-                            <Typography variant="body2">
-                              {row.assignedTo
-                                ? String(row.assignedTo).slice(0, 6) + "…"
-                                : "-"}
-                            </Typography>
-                          </Stack>
-                        </TableCell>
-                        <TableCell sx={{ maxWidth: 200 }}>
-                          <Tooltip title={(row.tags || []).join(", ")}>
-                            <Typography variant="body2" noWrap>
-                              {Array.isArray(row.tags) && row.tags.length
-                                ? row.tags.join(", ")
-                                : "-"}
-                            </Typography>
-                          </Tooltip>
-                        </TableCell>
-                        <TableCell>
-                          <Stack direction="row" spacing={0.5}>
-                            <Tooltip title="Edit">
-                              <IconButton
-                                size="small"
-                                onClick={() => openEdit(row)}
-                                sx={{
-                                  color: "warning.main",
-                                  transition: "all 0.2s ease",
-                                  "&:hover": {
-                                    transform: "scale(1.1) rotate(15deg)",
-                                    color: "warning.dark",
-                                  },
-                                }}
-                              >
-                                <Edit fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Delete (soft)">
-                              <IconButton
-                                size="small"
-                                onClick={() => onDelete(row)}
-                                sx={{
-                                  color: "error.main",
-                                  transition: "all 0.2s ease",
-                                  "&:hover": {
-                                    transform: "scale(1.1)",
-                                    color: "error.dark",
-                                  },
-                                }}
-                              >
-                                <Delete fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </Stack>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Card>
-        )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          {/* Pagination */}
+          <TablePagination
+            component="div"
+            count={filtered.length}
+            page={page}
+            onPageChange={handleChangePage}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            rowsPerPageOptions={[10, 25, 50, 100]}
+            sx={{ borderTop: "1px solid #e5e7eb", mt: "auto" }}
+          />
+        </Card>
       </Box>
 
-      {/* Create/Edit Dialog */}
-      <Dialog
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        maxWidth="md"
-        fullWidth
-        TransitionComponent={Fade}
-        PaperProps={{ sx: { borderRadius: "12px" } }}
-      >
-        <DialogTitle sx={{ borderBottom: "1px solid #e1e4e8", pb: 2 }}>
-          <Stack direction="row" spacing={1.25} alignItems="center">
-            <Avatar
-              sx={{
-                bgcolor: "primary.main",
-                boxShadow: "0 4px 12px rgba(0,0,0,0.16)",
-              }}
-            >
-              {isEdit ? <Edit /> : <Add />}
-            </Avatar>
-            <Box>
-              <Typography variant="h6" fontWeight={600}>
-                {isEdit ? "Edit Asset" : "New Asset"}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {isEdit
-                  ? "Update asset details and save changes"
-                  : "Fill in the details to create a new asset"}
-              </Typography>
-            </Box>
-          </Stack>
-        </DialogTitle>
-        <DialogContent sx={{ pt: "20px !important" }}>
-          <Grid container spacing={2.5}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Name"
-                fullWidth
-                value={form.name}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, name: e.target.value }))
-                }
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Type</InputLabel>
-                <Select
-                  label="Type"
-                  value={form.type}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, type: e.target.value }))
-                  }
-                >
-                  {ASSET_TYPES.map((t) => (
-                    <MenuItem key={t} value={t}>
-                      {t}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
+      {/* 🔎 Details Drawer (read-only for employee) */}
+      <AssetDetailsDrawer
+        open={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+        baseAsset={detailsAsset}
+        deviceTypes={deviceTypes}
+        brands={brands}
+        // Do not pass onEdit/onDelete for employee (hidden automatically in drawer)
+      />
 
-            <Grid item xs={12}>
-              <TextField
-                label="Description"
-                fullWidth
-                multiline
-                rows={3}
-                value={form.description}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, description: e.target.value }))
-                }
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Serial Number"
-                fullWidth
-                value={form.serialNumber}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, serialNumber: e.target.value }))
-                }
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Purchase Date"
-                type="date"
-                fullWidth
-                value={form.purchaseDate}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, purchaseDate: e.target.value }))
-                }
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={4}>
-              <TextField
-                label="Location"
-                fullWidth
-                value={form.location}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, location: e.target.value }))
-                }
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                label="Value (₹)"
-                type="number"
-                fullWidth
-                value={form.value}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, value: e.target.value }))
-                }
-                inputProps={{ min: 0, step: 0.01 }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <FormControl fullWidth>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  label="Status"
-                  value={form.status}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, status: e.target.value }))
-                  }
-                >
-                  {["Active", "In Maintenance", "Retired", "Lost", "Sold"].map(
-                    (s) => (
-                      <MenuItem key={s} value={s}>
-                        {s}
-                      </MenuItem>
-                    )
-                  )}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Assigned To (User ID)"
-                fullWidth
-                value={form.assignedTo}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, assignedTo: e.target.value }))
-                }
-                helperText="Optional: user name"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Tags (comma separated)"
-                fullWidth
-                value={form.tags}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, tags: e.target.value }))
-                }
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions sx={{ p: 3, pt: 1 }}>
-          <Button
-            onClick={() => setFormOpen(false)}
-            disabled={saving}
-            sx={{
-              borderRadius: "8px",
-              "&:hover": { transform: "translateY(-1px)" },
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={onSave}
-            disabled={saving || !form.name || !form.type}
-            startIcon={
-              saving ? (
-                <CircularProgress size={16} />
-              ) : isEdit ? (
-                <Edit />
-              ) : (
-                <Add />
-              )
-            }
-            sx={{
-              borderRadius: "8px",
-              transition: "all 0.2s ease",
-              "&:hover": {
-                transform: "translateY(-1px)",
-                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-              },
-              background: "linear-gradient(135deg, #3367e09c 0%)",
-            }}
-          >
-            {saving ? "Saving..." : isEdit ? "Save Changes" : "Create Asset"}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <Snackbar
+        open={snack.open}
+        autoHideDuration={2200}
+        onClose={() => setSnack((s) => ({ ...s, open: false }))}
+        message={snack.msg}
+      />
     </Box>
   );
 }
