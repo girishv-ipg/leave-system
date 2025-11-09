@@ -9,7 +9,6 @@ const Brand = require("../models/brand");
 const submitAssetInformation = async (req, res) => {
   try {
     const user = req.user;
-    console.log("Incoming Asset Data:", req.body);
 
     const {
       name,
@@ -128,19 +127,22 @@ const getAllAssets = async (req, res) => {
   }
 };
 
-// READ ONE: Get Asset by ID
+/**
+ * READ ONE: Get Asset by ID
+ *
+ */
 const getAssetById = async (req, res) => {
   try {
-    //   const db = await getDb();
     const assetId = req.params.id;
 
+    // Validate ObjectId
     if (!ObjectId.isValid(assetId)) {
       return res.status(400).json({ error: "Invalid asset ID" });
     }
 
-    // Find the asset by ID and check if it's not deleted
+    // Find the asset and ensure it's not deleted
     const asset = await Assets.findOne({
-      _id: assetId, // Mongoose will automatically handle ObjectId conversion
+      _id: assetId,
       isDeleted: { $ne: true },
     });
 
@@ -148,12 +150,25 @@ const getAssetById = async (req, res) => {
       return res.status(404).json({ error: "Asset not found" });
     }
 
+    // Look up assigned user by employeeCode
+    if (asset.assignedTo) {
+      const user = await User.findOne({
+        employeeCode: asset.assignedTo,
+      }).select("name employeeCode");
+
+      if (user) {
+        // Replace assignedTo with "employeeCode name"
+        asset.assignedTo = `${user.name}`;
+      }
+    }
+
     res.status(200).json(asset);
   } catch (error) {
     console.error("Failed to fetch asset:", error);
-    res
-      .status(500)
-      .json({ error: "Failed to fetch asset", details: error.message });
+    res.status(500).json({
+      error: "Failed to fetch asset",
+      details: error.message,
+    });
   }
 };
 
