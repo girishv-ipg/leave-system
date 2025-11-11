@@ -3,6 +3,7 @@ import React, { useMemo } from "react";
 
 import ChevronLeft from "@mui/icons-material/ChevronLeft";
 import ChevronRight from "@mui/icons-material/ChevronRight";
+import { holidays } from "@/utils/helpers";
 
 export default function LeaveCalendar({
   year,
@@ -158,21 +159,6 @@ function isWeekend(date) {
 function isHoliday(date) {
   return holidaySet.has(toKey(date));
 }
-const holidays = [
-  "2025-01-01",
-  "2025-01-14",
-  "2025-01-26",
-  "2025-02-26",
-  "2025-04-18",
-  "2025-05-01",
-  "2025-08-15",
-  "2025-08-27",
-  "2025-10-01",
-  "2025-10-02",
-  "2025-10-20",
-  "2025-11-01",
-  "2025-10-25",
-];
 
 // Build a Set using the same YYYY-MM-DD key format as `toKey`
 const holidaySet = new Set(holidays.map((h) => toKey(new Date(h))));

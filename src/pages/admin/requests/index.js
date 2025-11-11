@@ -11,12 +11,15 @@ import {
 import React, { useEffect, useState } from "react";
 
 import AdminLayout from "..";
+import Loader from "@/components/Loader";
+import NoDataFound from "@/components/NoDataFound";
 import axiosInstance from "@/utils/helpers";
 import withAdminAuth from "@/pages/auth/Authentication";
 
 const Requests = () => {
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [adminNote, setAdminNote] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleDecision = async (id, decision) => {
     try {
@@ -34,6 +37,7 @@ const Requests = () => {
   };
 
   const getLeaveRequests = async () => {
+    setLoading(true);
     try {
       const response = await axiosInstance.get(
         "/admin/leave-requests/pending",
@@ -44,7 +48,10 @@ const Requests = () => {
         }
       );
       setLeaveRequests(response.data.data);
-    } catch (error) {}
+    } catch (error) {
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -75,94 +82,107 @@ const Requests = () => {
             Leave Requests
           </Typography>
 
-          <Stack>
-            {leaveRequests.map((req, index) => (
-              <Paper key={req.id} sx={{ p: 2, mb: 2 }}>
-                <Stack spacing={1}>
-                  <Typography>
-                    <b>{req?.user?.name}</b> ({req.user?.employeeCode}){" "}
-                    {req.halfDayType ? (
-                      <>Half Day : ({req.halfDayType}) </>
-                    ) : (
-                      ""
-                    )}
-                    requested leave from <b>{formatDate(req.startDate)}</b> to{" "}
-                    <b>{formatDate(req.endDate)}</b>
-                    {req.status === "withdrawal-requested" ? (
-                      <Typography sx={{ fontWeight: 800 }}>
-                        Leave Withdrawal Request
-                      </Typography>
-                    ) : (
-                      ""
-                    )}
-                  </Typography>
-                  <Typography>Reason: {req.reason}</Typography>
-                  <TextField
-                    label="Comment"
-                    size="small"
-                    value={req.adminNote}
-                    onChange={(e) => {
-                      handleNotes(e, index);
-                    }}
-                  />
-                  <Stack direction="row" sx={{ pt: 2 }} spacing={2}>
-                    <Button
-                      variant="contained"
-                      color="success"
-                      onClick={() => handleDecision(req._id, "approved")}
-                      disabled={req.status !== "pending"}
-                      sx={{
-                        backgroundColor: "green !important",
-                        color: "white",
-                        "&:hover": {
-                          backgroundColor: "#1b5e20",
-                        },
-                      }}
-                    >
-                      Approve
-                    </Button>
+          <Divider sx={{ my: 4 }} />
 
-                    <Button
-                      sx={{
-                        backgroundColor: "red !important",
-                        color: "white",
-                        "&:hover": {
-                          backgroundColor: "#1b5e20",
-                        },
-                      }}
-                      variant="contained"
-                      color="error"
-                      onClick={() => handleDecision(req._id, "rejected")}
-                    >
-                      Deny
-                    </Button>
+          {loading ? (
+            <Loader />
+          ) : (
+            <>
+              {leaveRequests.length === 0 ? (
+                <NoDataFound message="No leave requests found." />
+              ) : (
+                <Stack>
+                  {leaveRequests.map((req, index) => (
+                    <Paper key={req.id} sx={{ p: 2, mb: 2 }}>
+                      <Stack spacing={1}>
+                        <Typography>
+                          <b>{req?.user?.name}</b> ({req.user?.employeeCode}){" "}
+                          {req.halfDayType ? (
+                            <>Half Day : ({req.halfDayType}) </>
+                          ) : (
+                            ""
+                          )}
+                          requested leave from{" "}
+                          <b>{formatDate(req.startDate)}</b> to{" "}
+                          <b>{formatDate(req.endDate)}</b>
+                          {req.status === "withdrawal-requested" ? (
+                            <Typography sx={{ fontWeight: 800 }}>
+                              Leave Withdrawal Request
+                            </Typography>
+                          ) : (
+                            ""
+                          )}
+                        </Typography>
+                        <Typography>Reason: {req.reason}</Typography>
+                        <TextField
+                          label="Comment"
+                          size="small"
+                          value={req.adminNote}
+                          onChange={(e) => {
+                            handleNotes(e, index);
+                          }}
+                        />
+                        <Stack direction="row" sx={{ pt: 2 }} spacing={2}>
+                          <Button
+                            variant="contained"
+                            color="success"
+                            onClick={() => handleDecision(req._id, "approved")}
+                            disabled={req.status !== "pending"}
+                            sx={{
+                              backgroundColor: "green !important",
+                              color: "white",
+                              "&:hover": {
+                                backgroundColor: "#1b5e20",
+                              },
+                            }}
+                          >
+                            Approve
+                          </Button>
 
-                    <Button
-                      variant="contained"
-                      color="success"
-                      onClick={() => handleDecision(req._id, "cancelled")}
-                      disabled={req.status !== "withdrawal-requested"}
-                      sx={{
-                        backgroundColor: "green !important",
-                        color: "white",
-                        "&:hover": {
-                          backgroundColor: "#1b5e20",
-                        },
-                      }}
-                    >
-                      Cancel Leave on Request
-                    </Button>
-                    <Typography>Status: {req.status}</Typography>
-                  </Stack>
+                          <Button
+                            sx={{
+                              backgroundColor: "red !important",
+                              color: "white",
+                              "&:hover": {
+                                backgroundColor: "#1b5e20",
+                              },
+                            }}
+                            variant="contained"
+                            color="error"
+                            onClick={() => handleDecision(req._id, "rejected")}
+                          >
+                            Deny
+                          </Button>
+
+                          <Button
+                            variant="contained"
+                            color="success"
+                            onClick={() => handleDecision(req._id, "cancelled")}
+                            disabled={req.status !== "withdrawal-requested"}
+                            sx={{
+                              backgroundColor: "green !important",
+                              color: "white",
+                              "&:hover": {
+                                backgroundColor: "#1b5e20",
+                              },
+                            }}
+                          >
+                            Cancel Leave on Request
+                          </Button>
+                          <Typography>Status: {req.status}</Typography>
+                        </Stack>
+                      </Stack>
+                    </Paper>
+                  ))}
+                  <Divider sx={{ my: 4 }} />
                 </Stack>
-              </Paper>
-            ))}
-            <Divider sx={{ my: 4 }} />
-          </Stack>
+              )}
+            </>
+          )}
         </Container>
       </Box>
     </AdminLayout>
   );
 };
 
-export default withAdminAuth(Requests, ["admin", "manager", "hr"]);
+export default withAdminAuth(Requests, ["admin", "manager", "hr", "md"]);

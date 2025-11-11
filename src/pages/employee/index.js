@@ -20,10 +20,10 @@ import KeyIcon from "@mui/icons-material/Key";
 import Link from "next/link";
 import LogoutIcon from "@mui/icons-material/Logout";
 import axiosInstance from "@/utils/helpers";
-import { usePathname } from "next/navigation"; // ✅ detect current route
+import { usePathname } from "next/navigation";
 
 export default function EmployeeLayout({ children }) {
-  const pathname = usePathname(); // ✅ get current route
+  const pathname = usePathname();
   const [name, setName] = useState("");
   const [anchorEl, setAnchorEl] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -47,10 +47,31 @@ export default function EmployeeLayout({ children }) {
     }
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-    window.location.href = "/";
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem("token");
+
+      const response = await axiosInstance.post(
+        "/logout",
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      // If backend says logout success → remove token
+      if (response.status === 200) {
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+        window.location.href = "/";
+      } else {
+        console.error("Logout failed:", response);
+      }
+    } catch (err) {
+      console.error("Logout API failed:", err);
+    }
   };
 
   const handleAvatarClick = (event) => setAnchorEl(event.currentTarget);

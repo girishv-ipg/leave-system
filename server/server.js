@@ -4,6 +4,7 @@ const connect = require("./config/db");
 const userController = require("./controllers/user");
 const leaveController = require("./controllers/leaveRequest");
 const adminReportsController = require("./controllers/adminReports");
+const authController = require("./controllers/authController");
 const User = require("./models/user");
 const Leave = require("./models/leave");
 const authenticate = require("./middleware/authenticate");
@@ -56,10 +57,13 @@ app.get("/health", async (req, res) => {
   return res.send({ message: "Hello" });
 });
 
+// Auth routes
+app.post("/login", authController.login);
+app.post("/logout", authenticate, authController.logout);
+
 // User routes
 app.post("/users", userController.createUser);
 app.put("/update-user/:id", userController.updateUser);
-app.post("/login", userController.login);
 
 // Leave routes
 app.post("/request-leave", authenticate, leaveController.registerLeaveRequest);
