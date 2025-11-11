@@ -496,31 +496,10 @@ export default function AdminExpenses() {
     }
   }, [activeTab, currentUser]);
 
-  const handleLogout = async () => {
-    try {
-      const token = localStorage.getItem("token");
-
-      const response = await axiosInstance.post(
-        "/logout",
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      // If backend says logout success → remove token
-      if (response.status === 200) {
-        localStorage.removeItem("user");
-        localStorage.removeItem("token");
-        window.location.href = "/";
-      } else {
-        console.error("Logout failed:", response);
-      }
-    } catch (err) {
-      console.error("Logout API failed:", err);
-    }
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    router.push("/login");
   };
 
   const handleHome = () => {
@@ -822,7 +801,6 @@ export default function AdminExpenses() {
         position: "relative",
       }}
     >
-      {/* New UI Navbar - Clean and Modern */}
       <Box
         sx={{
           position: "sticky",
