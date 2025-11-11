@@ -4,6 +4,7 @@ const connect = require("./config/db");
 const userController = require("./controllers/user");
 const leaveController = require("./controllers/leaveRequest");
 const adminReportsController = require("./controllers/adminReports");
+const authController = require("./controllers/authController");
 const User = require("./models/user");
 const Leave = require("./models/leave");
 const authenticate = require("./middleware/authenticate");
@@ -17,7 +18,14 @@ const {
   getAssetById,
   updateAssetById,
   deleteAssetById,
+  getAllDeviceName,
+  getAllBrandName,
+  createBrand,
+  createDeviceType,
 } = require("./controllers/trackAssets");
+const Assets = require("./models/assets");
+const DeviceType = require("./models/deviceType");
+const Brand = require("./models/brand");
 
 const app = express();
 
@@ -49,10 +57,13 @@ app.get("/health", async (req, res) => {
   return res.send({ message: "Hello" });
 });
 
+// Auth routes
+app.post("/login", authController.login);
+app.post("/logout", authenticate, authController.logout);
+
 // User routes
 app.post("/users", userController.createUser);
 app.put("/update-user/:id", userController.updateUser);
-app.post("/login", userController.login);
 
 // Leave routes
 app.post("/request-leave", authenticate, leaveController.registerLeaveRequest);
@@ -97,6 +108,11 @@ app.get("/api/assets", getAllAssets);
 app.get("/api/assets/:id", getAssetById);
 app.put("/api/assets/:id", updateAssetById);
 app.delete("/api/assets/:id", deleteAssetById);
+app.get("/api/devices", getAllDeviceName);
+app.get("/api/brands", getAllBrandName);
+app.post("/api/add-brand", createBrand);
+app.post("/api/add-device", createDeviceType);
+
 // Use the expense routes (this will mount /api/expenses/* endpoints)
 app.use(expenseRoutes);
 
@@ -108,6 +124,9 @@ app.listen(4000, async () => {
     // Force collection creation here
     await User.init();
     await Leave.init();
+    await Assets.init();
+    await DeviceType.init();
+    await Brand.init();
     console.log("User and Leave models initialized");
   } catch (err) {
     console.error("Error connecting to MongoDB:", err);

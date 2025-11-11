@@ -12,16 +12,38 @@ import { useEffect, useState } from "react";
 
 import Link from "next/link";
 import LogoutIcon from "@mui/icons-material/Logout";
-import { usePathname } from "next/navigation"; // ✅ for active route detection
+import axiosInstance from "@/utils/helpers";
+import { usePathname } from "next/navigation";
 
 export default function AdminLayout({ children }) {
   const [name, setName] = useState("Admin");
-  const pathname = usePathname(); // ✅ current route path
+  const pathname = usePathname();
 
-  const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-    window.location.href = "/";
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem("token");
+
+      const response = await axiosInstance.post(
+        "/logout",
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      // If backend says logout success → remove token
+      if (response.status === 200) {
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+        window.location.href = "/";
+      } else {
+        console.error("Logout failed:", response);
+      }
+    } catch (err) {
+      console.error("Logout API failed:", err);
+    }
   };
 
   useEffect(() => {

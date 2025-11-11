@@ -100,7 +100,7 @@ const Reports = () => {
             })();
 
       const monthName =
-        !form.month || form.month === ""
+        !form.month || form.month === "" || form.month === "all"
           ? "All_Months"
           : new Date(form.year, form.month - 1).toLocaleString("default", {
               month: "long",
@@ -247,4 +247,4 @@ const Reports = () => {
   );
 };
 
-export default withAdminAuth(Reports, ["admin", "manager", "hr"]);
+export default withAdminAuth(Reports, ["admin", "manager", "hr", "md"]);

@@ -5,7 +5,6 @@ const Validator = require("validatorjs");
 const jwt = require("jsonwebtoken");
 
 const SALT_ROUNDS = 10;
-const SECRET_KEY = "ipg-automotive";
 
 // Register a new user
 const createUser = async (req, res) => {

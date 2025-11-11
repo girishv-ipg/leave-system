@@ -10,7 +10,7 @@ const leaveSchema = new mongoose.Schema(
 
     leaveType: {
       type: String,
-      enum: ["casual", "sick", "wfh", "on_duty"],
+      enum: ["casual", "sick", "wfh", "on_duty", "pl", "lop"],
       required: true,
     },
 
