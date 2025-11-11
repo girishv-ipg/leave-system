@@ -35,6 +35,12 @@ const expensesSchema = new mongoose.Schema({
     type: Date,
     required: true,
   },
+  attendees: {
+    type: String,
+  },
+  purpose: {
+    type: String,
+  },
   status: {
     type: String,
     enum: ["pending", "managerApproved", "approved", "rejected"],
