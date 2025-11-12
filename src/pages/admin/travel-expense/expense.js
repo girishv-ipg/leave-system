@@ -171,7 +171,7 @@ export default function AdminExpenses() {
     handleMenuClose();
   };
 
-  // Download individual receipt function (unchanged)
+  // Download individual receipt function
   const downloadReceipt = async (expense) => {
     try {
       if (!expense.files || expense.files.length === 0) {
@@ -218,7 +218,7 @@ export default function AdminExpenses() {
     }
   };
 
-  // NEW: helper - sanitize filename parts
+  // helper - sanitize filename parts
   const safeFilename = (s) =>
     (s || "")
       .toString()
@@ -226,7 +226,7 @@ export default function AdminExpenses() {
       .replace(/\s+/g, "_")
       .slice(0, 80);
 
-  // NEW: helper - guess extension from mime/name
+  // helper - guess extension from mime/name
   const getExtension = (name, type) => {
     if (name && name.includes(".")) return name.split(".").pop();
     if (!type) return "bin";
@@ -271,8 +271,11 @@ export default function AdminExpenses() {
       const baseFolderName = safeFilename(
         `${submission.employeeName || "Employee"}_${
           submission.employeeCode || "Code"
-        }_${new Date(submission.createdAt || Date.now()).toLocaleDateString()}`
+        }_${new Date(
+          submission.createdAt || submission.updatedAt
+        ).toLocaleDateString()}`
       );
+
       const root = zip.folder(baseFolderName) || zip;
 
       // add files
@@ -1737,7 +1740,7 @@ export default function AdminExpenses() {
                                               </Tooltip>
                                             )}
 
-                                          {/* Download Receipt Button (individual) */}
+                                          {/* Download Receipt Button */}
                                           {expense.files &&
                                             expense.files.length > 0 && (
                                               <Tooltip title="Download Receipt">
@@ -1992,9 +1995,7 @@ export default function AdminExpenses() {
           </MenuItem>
 
           {/* NEW: Download all receipts as ZIP */}
-          <MenuItem
-            onClick={() => downloadAllReceipts(selectedSubmission)}
-          >
+          <MenuItem onClick={() => downloadAllReceipts(selectedSubmission)}>
             <ListItemIcon>
               <FolderZip sx={{ fontSize: 20, color: "#e4c605c6" }} />
             </ListItemIcon>
