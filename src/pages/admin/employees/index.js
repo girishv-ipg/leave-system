@@ -289,8 +289,9 @@ const EmployeeList = () => {
 
                       <Typography>
                         <b>Leave Taken:</b>{" "}
-                        {Number(selectedEmployee?.totalLeaveQuota) -
-                          Number(selectedEmployee?.leaveBalance)}
+                        {Number(selectedEmployee?.carryOverLeaves || 0) +
+                          Number(selectedEmployee?.currentYearLeaves || 0) -
+                          Number(selectedEmployee?.leaveBalance || 0)}
                       </Typography>
                       <Typography>
                         <b>Leave Balance:</b> {selectedEmployee?.leaveBalance}

@@ -46,6 +46,10 @@ const leaveSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    autoApprovedBySystem: {
+      type: Boolean,
+      default: false,
+    },
 
     reviewedOn: {
       type: Date,

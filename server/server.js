@@ -10,6 +10,9 @@ const Leave = require("./models/leave");
 const authenticate = require("./middleware/authenticate");
 const cors = require("cors");
 
+require("./jobs/autoApproval.js");
+require("./jobs/autoLeaveCarry.js");
+
 // Import the expense routes
 const expenseRoutes = require("./routes/travelExpense");
 const {
