@@ -44,8 +44,10 @@ import {
 } from "@mui/material";
 import React, { useEffect, useState } from "react";
 
+import { BusinessCenter } from "@mui/icons-material";
 import { Home } from "@mui/icons-material";
 import { Logout } from "@mui/icons-material";
+import { PersonAdd } from "@mui/icons-material";
 import axios from "axios";
 import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
@@ -320,6 +322,8 @@ export default function BulkExpenseEntry() {
           description: expense.description,
           startDate: expense.travelStartDate,
           endDate: expense.travelEndDate,
+          attendees: expense.attendees,
+          purpose: expense.purpose,
           hasFile: !!expense.file,
           fileIndex: expense.file ? index : null,
         };
@@ -686,6 +690,21 @@ export default function BulkExpenseEntry() {
                           fontWeight: 600,
                           bgcolor: isEditMode ? "warning.main" : "primary.main",
                           color: "white",
+                          minWidth: 150,
+                        }}
+                      >
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
+                          <BusinessCenter sx={{ fontSize: 16 }} />
+                          Purpose
+                        </Box>
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          fontWeight: 600,
+                          bgcolor: isEditMode ? "warning.main" : "primary.main",
+                          color: "white",
                         }}
                       >
                         <Box
@@ -723,6 +742,21 @@ export default function BulkExpenseEntry() {
                         >
                           <CalendarToday sx={{ fontSize: 16 }} />
                           End Date
+                        </Box>
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          fontWeight: 600,
+                          bgcolor: isEditMode ? "warning.main" : "primary.main",
+                          color: "white",
+                          minWidth: 150,
+                        }}
+                      >
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
+                          <PersonAdd sx={{ fontSize: 16 }} />
+                          Attendees
                         </Box>
                       </TableCell>
                       <TableCell
@@ -805,6 +839,23 @@ export default function BulkExpenseEntry() {
                         </TableCell>
                         <TableCell>
                           <TextField
+                            value={expense.purpose}
+                            onChange={(e) =>
+                              updateExpense(
+                                expense.id,
+                                "purpose",
+                                e.target.value
+                              )
+                            }
+                            fullWidth
+                            size="small"
+                            placeholder="Enter purpose"
+                            multiline
+                            maxRows={2}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
                             value={expense.description}
                             onChange={(e) =>
                               updateExpense(
@@ -815,7 +866,7 @@ export default function BulkExpenseEntry() {
                             }
                             fullWidth
                             size="small"
-                            placeholder="Enter description..."
+                            placeholder="Enter description"
                             multiline
                             maxRows={2}
                           />
@@ -850,6 +901,23 @@ export default function BulkExpenseEntry() {
                             fullWidth
                             size="small"
                             InputLabelProps={{ shrink: true }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            value={expense.attendees}
+                            onChange={(e) =>
+                              updateExpense(
+                                expense.id,
+                                "attendees",
+                                e.target.value
+                              )
+                            }
+                            fullWidth
+                            size="small"
+                            placeholder="Enter attendees"
+                            multiline
+                            maxRows={2}
                           />
                         </TableCell>
                         <TableCell>

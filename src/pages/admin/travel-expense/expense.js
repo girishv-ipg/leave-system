@@ -64,7 +64,11 @@ import {
 import { act, useEffect, useMemo, useState } from "react";
 
 import ExpenseFiltersMenu from "@/utils/ExpenseFiltersOthers";
+import { FolderZip } from "@mui/icons-material";
+import JSZip from "jszip";
+import { Status } from "filepond";
 import axiosInstance from "@/utils/helpers";
+import { saveAs } from "file-saver";
 import { useRouter } from "next/navigation";
 
 export default function AdminExpenses() {
@@ -72,7 +76,7 @@ export default function AdminExpenses() {
   const [bulkSubmissions, setBulkSubmissions] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState(""); // Will be set based on user role
+  const [activeTab, setActiveTab] = useState("all"); // Will be set based on user role
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [expandedSubmission, setExpandedSubmission] = useState(null);
@@ -214,6 +218,100 @@ export default function AdminExpenses() {
     }
   };
 
+  // helper - sanitize filename parts
+  const safeFilename = (s) =>
+    (s || "")
+      .toString()
+      .replace(/[/\\?%*:|"<>]/g, "-")
+      .replace(/\s+/g, "_")
+      .slice(0, 80);
+
+  // helper - guess extension from mime/name
+  const getExtension = (name, type) => {
+    if (name && name.includes(".")) return name.split(".").pop();
+    if (!type) return "bin";
+    if (type.includes("pdf")) return "pdf";
+    if (type.includes("png")) return "png";
+    if (type.includes("jpeg")) return "jpg";
+    if (type.includes("jpg")) return "jpg";
+    if (type.includes("gif")) return "gif";
+    if (type.includes("webp")) return "webp";
+    return type.split("/").pop() || "bin";
+  };
+
+  //  Download all receipts in a submission as ZIP
+  const downloadAllReceipts = async (submission) => {
+    try {
+      if (!submission || !Array.isArray(submission.expenses)) {
+        setError("No expenses found in this submission");
+        return;
+      }
+
+      // collect all files
+      const files = [];
+      submission.expenses.forEach((exp, expIdx) => {
+        (exp.files || []).forEach((f, fileIdx) => {
+          files.push({
+            expense: exp,
+            file: f,
+            expIdx,
+            fileIdx,
+          });
+        });
+      });
+
+      if (files.length === 0) {
+        setIsFilesPresent(false);
+        return;
+      }
+
+      const zip = new JSZip();
+
+      // Put files inside a folder for neatness
+      const baseFolderName = safeFilename(
+        `${submission.employeeName || "Employee"}_${
+          submission.employeeCode || "Code"
+        }_${new Date(
+          submission.createdAt || submission.updatedAt
+        ).toLocaleDateString()}`
+      );
+
+      const root = zip.folder(baseFolderName) || zip;
+
+      // add files
+      for (const { expense, file, expIdx, fileIdx } of files) {
+        const ext = getExtension(file.name, file.type);
+        const prettyName = safeFilename(
+          `${String(expIdx + 1).padStart(2, "0")}_${
+            expense.expenseType || "expense"
+          }_${expense.amount || 0}_${String(fileIdx + 1).padStart(
+            2,
+            "0"
+          )}.${ext}`
+        );
+
+        // base64 decode (schema gives pure base64 string)
+        // JSZip supports base64 via options
+        root.file(prettyName, file.data, { base64: true });
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+
+      const zipName = `${safeFilename(
+        submission.employeeName || "Employee"
+      )}_${safeFilename(submission.employeeCode || "Code")}_receipts.zip`;
+
+      saveAs(zipBlob, zipName);
+
+      setSuccess("All receipts downloaded as ZIP");
+      setTimeout(() => setSuccess(""), 3000);
+      handleMenuClose();
+    } catch (e) {
+      setError(`Failed to create ZIP: ${e.message}`);
+      setTimeout(() => setError(""), 4000);
+    }
+  };
+
   const [filterType, setFilterType] = useState("name");
 
   // Table filters
@@ -310,10 +408,28 @@ export default function AdminExpenses() {
       // Transform response to match frontend format
       let expensesData = response?.data?.data || [];
 
-      if (status === "managerApproved") {
-        expensesData = expensesData.filter(
-          (exp) => exp.isManagerApproved && !exp.isFinanceApproved
-        );
+      switch (status) {
+        case "pending":
+          expensesData = expensesData.filter((exp) => exp.status === "pending");
+          break;
+        case "rejected":
+          expensesData = expensesData.filter(
+            (exp) => exp.status === "rejected"
+          );
+          break;
+        case "managerApproved":
+          expensesData = expensesData.filter(
+            (exp) =>
+              exp.isManagerApproved &&
+              !exp.isFinanceApproved &&
+              !(exp.status === "rejected")
+          );
+          break;
+        case "approved":
+          expensesData = expensesData.filter(
+            (exp) => exp.status === "approved"
+          );
+          break;
       }
 
       setBulkSubmissions(expensesData);
@@ -323,16 +439,7 @@ export default function AdminExpenses() {
         const allDataResponse = await axiosInstance.get("/expenses", {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const allTransformed = (allDataResponse?.data?.data || []).map(
-          (expense) => ({
-            _id: expense._id,
-            employeeId: expense.employeeId,
-            totalAmount: expense.totalAmount,
-            expenses: expense.expenses || [],
-            createdAt: expense.createdAt,
-          })
-        );
-        setAllExpensesData(allTransformed);
+        setAllExpensesData(allDataResponse?.data?.data || []);
       }
     } catch (error) {
       console.error("Error fetching expenses:", error);
@@ -392,31 +499,10 @@ export default function AdminExpenses() {
     }
   }, [activeTab, currentUser]);
 
-  const handleLogout = async () => {
-    try {
-      const token = localStorage.getItem("token");
-
-      const response = await axiosInstance.post(
-        "/logout",
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      // If backend says logout success → remove token
-      if (response.status === 200) {
-        localStorage.removeItem("user");
-        localStorage.removeItem("token");
-        window.location.href = "/";
-      } else {
-        console.error("Logout failed:", response);
-      }
-    } catch (err) {
-      console.error("Logout API failed:", err);
-    }
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    router.push("/login");
   };
 
   const handleHome = () => {
@@ -427,7 +513,6 @@ export default function AdminExpenses() {
     router.push("/employee/travel-expense/upload");
   };
 
-  // Handle individual expense action
   // Handle individual expense action (Finance only) or bulk action (Manager)
   const handleIndividualAction = async () => {
     try {
@@ -719,7 +804,6 @@ export default function AdminExpenses() {
         position: "relative",
       }}
     >
-      {/* New UI Navbar - Clean and Modern */}
       <Box
         sx={{
           position: "sticky",
@@ -942,10 +1026,6 @@ export default function AdminExpenses() {
                   borderRadius: "8px",
                   background: stat.bg,
                   border: `1px solid ${stat.border}20`,
-                  transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                  "&:hover": {
-                    boxShadow: "0 8px 25px rgba(0, 0, 0, 0.1)",
-                  },
                 }}
               >
                 <CardContent sx={{ p: 2.5, textAlign: "center" }}>
@@ -1881,7 +1961,9 @@ export default function AdminExpenses() {
             elevation: 8,
             sx: {
               borderRadius: "8px",
-              minWidth: 180,
+
+              fontWeight: 600,
+              minWidth: 220,
               "& .MuiMenuItem-root": {
                 px: 2,
                 py: 1.5,
@@ -1897,14 +1979,35 @@ export default function AdminExpenses() {
           transformOrigin={{ horizontal: "right", vertical: "top" }}
           anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
         >
-          <MenuItem
-            onClick={() => exportToExcel(selectedSubmission)}
-            sx={{ color: "#059669" }}
-          >
+          <MenuItem onClick={() => exportToExcel(selectedSubmission)} sx={{}}>
             <ListItemIcon>
-              <FileDownload sx={{ fontSize: 20, color: "#059669" }} />
+              <FileDownload sx={{ fontSize: 20, color: "#04dd37b5" }} />
             </ListItemIcon>
-            <ListItemText primary="Export to Excel" />
+            <ListItemText
+              primary="Export to Excel"
+              primaryTypographyProps={{
+                sx: {
+                  fontWeight: 600,
+                  color: "#373737de",
+                },
+              }}
+            />
+          </MenuItem>
+
+          {/* NEW: Download all receipts as ZIP */}
+          <MenuItem onClick={() => downloadAllReceipts(selectedSubmission)}>
+            <ListItemIcon>
+              <FolderZip sx={{ fontSize: 20, color: "#e4c605c6" }} />
+            </ListItemIcon>
+            <ListItemText
+              primary="Download all receipts"
+              primaryTypographyProps={{
+                sx: {
+                  fontWeight: 600,
+                  color: "#373737de",
+                },
+              }}
+            />
           </MenuItem>
         </Menu>
 
