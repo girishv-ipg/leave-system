@@ -71,12 +71,17 @@ import {
   getBrandItem,
   getDeviceTypeItem,
   normalizeCatalog,
-} from "./catalogUtils";
+} from "../../../utils/catalogUtils";
 import React, { useEffect, useMemo, useState } from "react";
-import { chipForStatus, money, tileTheme, yyyyMmDd } from "./common";
+import {
+  chipForStatus,
+  money,
+  tileTheme,
+  yyyyMmDd,
+} from "../../../components/commonAssets.js";
 
-import AssetDetailsDrawer from "./AssetDetailsDrawer";
-import SerialNumbersEditor from "./SerialNumbersEditor";
+import AssetDetailsDrawer from "@/components/AssetDetailsDrawer";
+import SerialNumbersEditor from "@/components/SerialNumbersEditor";
 import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
 

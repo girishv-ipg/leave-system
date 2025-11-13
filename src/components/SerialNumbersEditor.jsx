@@ -28,7 +28,7 @@ import {
   findById,
   isUrl,
   looksEmoji,
-} from "./catalogUtils";
+} from "../utils/catalogUtils";
 import React, { useEffect, useMemo, useState } from "react";
 
 export default function SerialNumbersEditor({
