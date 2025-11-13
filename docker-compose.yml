@@ -36,3 +36,24 @@ services:
     volumes:
       - ./mongo_data:/data/db
     restart: always
+
+    # MongoDB Backup Service
+  mongo-backup:
+    image: mongo:6.0
+    container_name: mongo-backup
+    depends_on:
+      - mongo
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    volumes:
+      - ./backups:/backup
+    command: >
+      bash -c "
+      apt-get update && apt-get install -y cron &&
+      echo '0 2 * * * root mongodump --uri mongodb://root:password@mongo:27017/leaveSystem?authSource=admin --out /backup/$(date +\%Y-\%m-\%d)' > /etc/cron.d/mongo-backup &&
+      chmod 0644 /etc/cron.d/mongo-backup &&
+      crontab /etc/cron.d/mongo-backup &&
+      cron -f
+      "
+    restart: always

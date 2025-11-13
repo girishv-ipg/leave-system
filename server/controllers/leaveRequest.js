@@ -111,7 +111,7 @@ const getPendingLeaveRequests = async (req, res) => {
     // fetch the logged‐in user
     const user = await User.findById(req.user.userId).exec();
 
-    switch (user.role) {
+    switch (user?.role) {
       case "admin":
         // no additional filters: admin sees everything
         break;
