@@ -49,6 +49,11 @@ const userSchema = new mongoose.Schema(
       required: true,
       default: 0,
     },
+    lastCarryForwardYear: {
+      type: Number,
+      required: false,
+      default: null,
+    },
     // Date the employee joined the organization
     joiningDate: {
       type: Date,

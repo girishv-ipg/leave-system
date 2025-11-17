@@ -272,7 +272,7 @@ const EmployeeList = () => {
                 <Dialog
                   open={open}
                   onClose={handleClose}
-                  maxWidth="md"
+                  maxWidth="lg"
                   fullWidth
                 >
                   <DialogTitle>
@@ -313,6 +313,7 @@ const EmployeeList = () => {
                           <TableCell>Status</TableCell>
                           <TableCell>Comment</TableCell>
                           <TableCell>Approved/RejectedBy</TableCell>
+                          <TableCell>Approved Date</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -341,6 +342,11 @@ const EmployeeList = () => {
                             </TableCell>
                             <TableCell sx={{ textTransform: "capitalize" }}>
                               {entry?.reviewedBy?.name || "--"}
+                            </TableCell>
+                            <TableCell sx={{ textTransform: "capitalize" }}>
+                              {entry?.updatedAt
+                                ? formatDate(entry.updatedAt)
+                                : "--"}
                             </TableCell>
                           </TableRow>
                         ))}

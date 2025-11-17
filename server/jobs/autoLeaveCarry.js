@@ -2,61 +2,73 @@ import User from "../models/user.js";
 import cron from "node-cron";
 
 /**
- * Carry forward unused leaves to the next year.
- * - Runs every year on Jan 1st, 00:00
- * - Carries forward a maximum of 15 unused leaves
- * - Resets currentYearLeaves to 30
+ * New Year Carry-Forward Cron
+ * Runs every Jan 1st at 00:00
+ * Carry Rules:
+ *  - Prev year unused: max 15 carried
+ *  - Current year unused: max 15 carried
+ *  - Total possible carry: 30
+ *  - New year's fresh leaves: 30
  */
 
-// "0 0 1 1 *"
 cron.schedule("0 0 1 1 *", async () => {
-  console.log("[CRON] Carry-forward job started for new year...");
+  console.log("[CRON] Carry-forward process started...");
 
   const NEW_YEAR_QUOTA = 30;
-  const MAX_CARRY_FORWARD = 15;
+  const MAX_PER_BUCKET = 15;
   const currentYear = new Date().getFullYear();
 
   try {
     const users = await User.find({});
 
     for (const user of users) {
-      const prevBalance = user.leaveBalance || 0;
+      // Skip if already done earlier
+      if (user.lastCarryForwardYear === currentYear) {
+        console.log(`[CRON] ${user.name}: already processed.`);
+        continue;
+      }
 
-      // Carry forward up to 15 from previous year
-      const carryForward = Math.min(prevBalance, MAX_CARRY_FORWARD);
+      const prevCarry = user.carryOverLeaves || 0; // leftover from last year
+      const currentYearAlloc = user.currentYearLeaves || NEW_YEAR_QUOTA;
+      const balance = Math.max(0, user.leaveBalance || 0);
 
-      // Calculate new total leave balance for this year
-      const newBalance = carryForward + NEW_YEAR_QUOTA;
+      const totalStartOfYear = prevCarry + currentYearAlloc;
 
-      // Update user's leave fields
-      user.carryOverLeaves = carryForward;
+      const used = totalStartOfYear - balance;
+
+      // Calculate remaining in each bucket
+      const remainingCurrentYear = Math.max(0, currentYearAlloc - used);
+      const consumedCurrentYear = Math.min(used, currentYearAlloc);
+      const remainingPrevYear = Math.max(
+        0,
+        prevCarry - (used - consumedCurrentYear)
+      );
+
+      //  Apply your rule: max 15 from each bucket
+      const carryPrev = Math.min(remainingPrevYear, MAX_PER_BUCKET);
+      const carryCurrent = Math.min(remainingCurrentYear, MAX_PER_BUCKET);
+
+      const totalCarry = carryPrev + carryCurrent;
+
+      //  New year’s balance
+      const newBalance = totalCarry + NEW_YEAR_QUOTA;
+
+      // Update user
+      user.carryOverLeaves = totalCarry;
       user.currentYearLeaves = NEW_YEAR_QUOTA;
       user.leaveBalance = newBalance;
       user.totalLeaveQuota = newBalance;
+      user.lastCarryForwardYear = currentYear;
 
-      // Optional: store the last year processed (to prevent reruns)
-      if (
-        !user.lastCarryForwardYear ||
-        user.lastCarryForwardYear < currentYear
-      ) {
-        user.lastCarryForwardYear = currentYear;
-        await user.save();
-        console.log(
-          `[CRON] ${
-            user.name || user.employeeCode
-          }: carried forward ${carryForward}, total ${newBalance}`
-        );
-      } else {
-        console.log(
-          `[CRON] ${
-            user.name || user.employeeCode
-          }: already processed for ${currentYear}, skipping.`
-        );
-      }
+      await user.save();
+
+      console.log(
+        `[CRON] ${user.name}: prev=${carryPrev}, current=${carryCurrent}, totalCarry=${totalCarry}, newBalance=${newBalance}`
+      );
     }
 
-    console.log("[CRON] Carry-forward job completed successfully.");
+    console.log("[CRON] Carry-forward completed.");
   } catch (err) {
-    console.error("[CRON] Error during carry-forward job:", err);
+    console.error("[CRON] Error:", err);
   }
 });

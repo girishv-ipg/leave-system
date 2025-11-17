@@ -51,7 +51,7 @@ const Main = () => {
       userRole === "hr" ||
       userRole === "md"
     ) {
-      router.push("/admin/requests");
+      router.push("/admin/home");
     } else {
       router.push("/employee/requestLeave");
     }
@@ -81,7 +81,7 @@ const Main = () => {
   const cards = [
     {
       title: "Leave Management",
-      route: "/admin/requests",
+      route: "/admin/home",
       onClick: handleLeaveManagementClick,
     },
     {

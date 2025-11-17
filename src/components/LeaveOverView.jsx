@@ -142,6 +142,7 @@ const LeaveOverView = () => {
                     <TableCell>Status</TableCell>
                     <TableCell>Comment</TableCell>
                     <TableCell>ApprovedBy</TableCell>{" "}
+                    <TableCell>Approved Date</TableCell>{" "}
                     <TableCell>Action</TableCell>{" "}
                   </TableRow>
                 </TableHead>
@@ -172,6 +173,10 @@ const LeaveOverView = () => {
                       </TableCell>
                       <TableCell sx={{ textTransform: "capitalize" }}>
                         {leave?.reviewedBy?.name || "--"}
+                      </TableCell>
+
+                      <TableCell sx={{ textTransform: "capitalize" }}>
+                        {leave?.updatedAt ? formatDate(leave.updatedAt) : "--"}
                       </TableCell>
 
                       <TableCell sx={{ textTransform: "capitalize" }}>
