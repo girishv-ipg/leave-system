@@ -1,14 +1,20 @@
 // Shared helpers: money, date, status chip, summary tile theme
 
 export const money = (n) =>
-  `₹${Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  `₹${Number(n || 0).toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+  })}`;
 
 export const yyyyMmDd = (d) =>
   d ? new Date(d).toISOString().slice(0, 10) : "";
 
 // Status chip visual mapping used in table + elsewhere
-export function chipForStatus(status) {
-  switch (status) {
+export function chipForStatus(status = "") {
+  const raw = status || "";
+  const s = String(raw).toLowerCase();
+
+  // 1) Asset-specific statuses
+  switch (raw) {
     case "Active":
       return {
         label: "Active",
@@ -19,6 +25,7 @@ export function chipForStatus(status) {
           fontWeight: 600,
         },
       };
+
     case "In Maintenance":
       return {
         label: "In Maintenance",
@@ -29,6 +36,7 @@ export function chipForStatus(status) {
           fontWeight: 600,
         },
       };
+
     case "Retired":
       return {
         label: "Retired",
@@ -39,6 +47,7 @@ export function chipForStatus(status) {
           fontWeight: 600,
         },
       };
+
     case "Lost":
       return {
         label: "Lost",
@@ -49,6 +58,7 @@ export function chipForStatus(status) {
           fontWeight: 600,
         },
       };
+
     case "Sold":
       return {
         label: "Sold",
@@ -59,58 +69,51 @@ export function chipForStatus(status) {
           fontWeight: 600,
         },
       };
-    default:
-      return { label: status || "-", sx: {} };
+    // no default return here – we fall through to generic logic below
   }
+
+  // 2) Generic status mapping (e.g. leave requests)
+  if (s === "approved" || s === "active" || s === "accepted") {
+    return {
+      label: raw || "Approved",
+      sx: {
+        color: "#0f5132",
+        bgcolor: "rgba(25, 135, 84, .12)",
+        border: "1px solid rgba(25,135,84,.24)",
+      },
+    };
+  }
+
+  if (s === "rejected") {
+    return {
+      label: raw || "Rejected",
+      sx: {
+        color: "#842029",
+        bgcolor: "rgba(220,53,69,.10)",
+        border: "1px solid rgba(220,53,69,.24)",
+      },
+    };
+  }
+
+  if (!raw) {
+    return { label: "-", sx: {} };
+  }
+
+  // 3) Default → treat as pending-like
+  return {
+    label: raw,
+    sx: {
+      color: "#92400e",
+      bgcolor: "rgba(245,158,11,.10)",
+      border: "1px solid rgba(245,158,11,.24)",
+    },
+  };
 }
-
-// // Summary tile palette by label
-// export function tileTheme(label) {
-//   const base = {
-//     text: "#0f172a",
-//     // border: "#e5e7eb",
-//     color: "0969da",
-//     bg: "linear-gradient(135deg, #fafafa 0%, #ffffff 100%)",
-//   };
-//   if (/Total Value/i.test(label)) {
-//     return {
-//       text: "#166534",
-//       color: "#1a7f37",
-//       // border: "#bbf7d0",
-//       bg: "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)",
-//     };
-//   }
-//   if (/Active/i.test(label)) {
-//     return {
-//       text: "#0ea5e9",
-//       // border: "#bae6fd",
-//       color: "#0ea5e9",
-
-//       bg: "linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)",
-//     };
-//   }
-//   if (/Maintenance/i.test(label)) {
-//     return {
-//       text: "#a16207",
-//       // border: "#fde68a",
-//       color: "#bf8700",
-
-//       bg: "linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)",
-//     };
-//   }
-//   if (/Retired|Lost|Sold/i.test(label)) {
-//     return {
-//       text: "#334155",
-//       // border: "#e2e8f0",
-//       color: "#64748b",
-//       bg: "linear-gradient(135deg, #f1f5f9 0%, #ffffff 100%)",
-//     };
-//   }
-//   return base;
-// }
 
 // utils/tileTheme.js
 export function tileTheme(label) {
+  const normalized = String(label || "");
+
   const themes = [
     {
       test: /Total Assets/i,
@@ -145,7 +148,7 @@ export function tileTheme(label) {
   ];
 
   // find matching theme
-  const found = themes.find((t) => t.test.test(label));
+  const found = themes.find((t) => t.test.test(normalized));
 
   // default fallback theme
   return (

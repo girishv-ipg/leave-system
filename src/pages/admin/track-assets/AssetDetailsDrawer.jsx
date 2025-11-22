@@ -1,27 +1,34 @@
+// pages/admin/track-assets/AssetDetailsDrawer.jsx
+
 import {
   Alert,
   Avatar,
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
   Drawer,
   Grid,
   IconButton,
+  Snackbar,
   Stack,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import {
   CalendarMonth,
   Cancel,
   CheckCircle,
+  ContentCopy,
   CurrencyRupee,
   Delete,
+  DoNotDisturb,
   Edit,
   Info,
   Inventory2,
@@ -45,7 +52,7 @@ import React from "react";
 import axiosInstance from "@/utils/helpers";
 
 /** ----------------------------------------------------------------
- * Helpers
+ * Small UI helper
  * ---------------------------------------------------------------- */
 function RowLine({ icon, label, value, mono }) {
   return (
@@ -174,11 +181,15 @@ export default function AssetDetailsDrawer({
   onDelete,
   deviceTypes = [],
   brands = [],
+  onStatusChange, // optional: notify parent when status changes
 }) {
   const [loading, setLoading] = React.useState(false);
   const [asset, setAsset] = React.useState(baseAsset || null);
   const [error, setError] = React.useState("");
   const [isEmployee, setIsEmployee] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [submittingDeviceId, setSubmittingDeviceId] = React.useState(null);
+  const [snack, setSnack] = React.useState({ open: false, msg: "" });
 
   React.useEffect(() => {
     try {
@@ -217,16 +228,104 @@ export default function AssetDetailsDrawer({
     };
   }, [open, baseAsset?._id]);
 
-  const headerChip = chipForStatus(asset?.status || baseAsset?.status || "");
-  const serials = Array.isArray(asset?.serialNumbers)
-    ? asset.serialNumbers
-    : Array.isArray(baseAsset?.serialNumbers)
-    ? baseAsset.serialNumbers
+  const effective = asset || baseAsset || {};
+  const headerChip = chipForStatus(effective?.status || "");
+  const serials = Array.isArray(effective?.serialNumbers)
+    ? effective.serialNumbers
     : [];
 
+  // Non-employee admin-ish actions preserved
   const showEdit = !isEmployee && Boolean(onEdit);
   const showDelete = !isEmployee && Boolean(onDelete);
-  const showAnyActions = showEdit || showDelete;
+  const showAnyAdminActions = showEdit || showDelete;
+
+  // Employee header actions are visible only when asset is Pending
+  const canEmployeeActOnAsset =
+    isEmployee && String(effective?.status || "").toLowerCase() === "pending";
+
+  const updateStatus = async (nextStatus) => {
+    if (!effective?._id) return;
+    try {
+      setSubmitting(true);
+      const token = localStorage.getItem("token");
+      const res = await axiosInstance.put(
+        `/api/assets/${effective._id}`,
+        { status: nextStatus },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const updated = res?.data || { ...effective, status: nextStatus };
+      setAsset(updated);
+      onStatusChange?.(updated);
+      setSnack({ open: true, msg: `Asset ${nextStatus.toLowerCase()}` });
+    } catch (e) {
+      setSnack({ open: true, msg: "Failed to update asset status" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const updateDeviceStatus = async (serial, nextStatus) => {
+    if (!effective?._id || !serial?._id) return;
+    try {
+      setSubmittingDeviceId(serial._id);
+      const token = localStorage.getItem("token");
+      const res = await axiosInstance.put(
+        `/api/assets/${effective._id}/serials/${serial._id}`,
+        { status: nextStatus },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      // Update local state (avoid refetch)
+      const payload = res?.data;
+      let next = effective;
+      if (payload?.serialNumbers) {
+        next = payload;
+      } else {
+        next = {
+          ...effective,
+          serialNumbers: serials.map((s) =>
+            String(s._id) === String(serial._id)
+              ? { ...s, status: nextStatus }
+              : s
+          ),
+        };
+      }
+      setAsset(next);
+      onStatusChange?.(next);
+      setSnack({ open: true, msg: `Device ${nextStatus.toLowerCase()}` });
+    } catch (e) {
+      setSnack({ open: true, msg: "Failed to update device" });
+    } finally {
+      setSubmittingDeviceId(null);
+    }
+  };
+
+  const anyPendingDevice =
+    isEmployee &&
+    serials.some((s) => String(s?.status || "").toLowerCase() === "pending");
+
+  // show device actions for employees if any device is pending (regardless of asset pending)
+  const showDeviceActions = isEmployee && anyPendingDevice;
+
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text || "");
+      setSnack({ open: true, msg: "Serial copied" });
+    } catch {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text || "";
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        setSnack({ open: true, msg: "Serial copied" });
+      } catch {
+        setSnack({ open: true, msg: "Copy failed" });
+      }
+    }
+  };
 
   return (
     <Drawer
@@ -253,7 +352,7 @@ export default function AssetDetailsDrawer({
               fontWeight: 700,
             }}
           >
-            {String(asset?.name || baseAsset?.name || "?")
+            {String(effective?.name || "?")
               .slice(0, 1)
               .toUpperCase()}
           </Avatar>
@@ -266,13 +365,13 @@ export default function AssetDetailsDrawer({
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
               }}
-              title={asset?.name || baseAsset?.name}
+              title={effective?.name}
             >
-              {asset?.name || baseAsset?.name || "-"}
+              {effective?.name || "-"}
             </Typography>
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography variant="caption" color="text.secondary">
-                #{String(asset?._id || baseAsset?._id || "").slice(-6)}
+                #{String(effective?._id || "").slice(-6)}
               </Typography>
               <Chip
                 size="small"
@@ -283,33 +382,68 @@ export default function AssetDetailsDrawer({
           </Box>
 
           {/* Actions */}
-          {showAnyActions ? (
-            <Stack direction="row" spacing={1}>
-              {showEdit && (
-                <IconButton
-                  onClick={() => onEdit(asset || baseAsset)}
-                  sx={{ color: "warning.main" }}
-                >
-                  <Edit />
-                </IconButton>
-              )}
-              {showDelete && (
-                <IconButton
-                  onClick={() => onDelete(asset || baseAsset)}
-                  sx={{ color: "error.main" }}
-                >
-                  <Delete />
-                </IconButton>
-              )}
-              <IconButton onClick={onClose}>
-                <Cancel />
-              </IconButton>
-            </Stack>
-          ) : (
+          <Stack direction="row" spacing={1} alignItems="center">
+            {/* Employee Accept/Reject (asset-level) when asset is Pending */}
+            {canEmployeeActOnAsset && (
+              <>
+                <Tooltip title="Accept asset">
+                  <span>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<CheckCircle />}
+                      disabled={submitting}
+                      onClick={() => updateStatus("Active")}
+                      sx={{ borderRadius: "8px", minWidth: 0 }}
+                    >
+                      Accept
+                    </Button>
+                  </span>
+                </Tooltip>
+                <Tooltip title="Reject asset">
+                  <span>
+                    <Button
+                      size="small"
+                      color="error"
+                      variant="outlined"
+                      startIcon={<DoNotDisturb />}
+                      disabled={submitting}
+                      onClick={() => updateStatus("Rejected")}
+                      sx={{ borderRadius: "8px", minWidth: 0 }}
+                    >
+                      Reject
+                    </Button>
+                  </span>
+                </Tooltip>
+              </>
+            )}
+
+            {/* Admin actions (unchanged) */}
+            {showAnyAdminActions && (
+              <>
+                {showEdit && (
+                  <IconButton
+                    onClick={() => onEdit(effective)}
+                    sx={{ color: "warning.main" }}
+                  >
+                    <Edit />
+                  </IconButton>
+                )}
+                {showDelete && (
+                  <IconButton
+                    onClick={() => onDelete(effective)}
+                    sx={{ color: "error.main" }}
+                  >
+                    <Delete />
+                  </IconButton>
+                )}
+              </>
+            )}
+
             <IconButton onClick={onClose}>
               <Cancel />
             </IconButton>
-          )}
+          </Stack>
         </Stack>
       </Box>
 
@@ -343,14 +477,14 @@ export default function AssetDetailsDrawer({
                     <RowLine
                       icon={<Inventory2 />}
                       label="Asset Name"
-                      value={asset?.name || baseAsset?.name}
+                      value={effective?.name}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <RowLine
                       icon={<Tag />}
                       label="Type"
-                      value={asset?.type || baseAsset?.type}
+                      value={effective?.type}
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -358,7 +492,7 @@ export default function AssetDetailsDrawer({
                       Description
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5 }}>
-                      {asset?.description || baseAsset?.description || "—"}
+                      {effective?.description || "—"}
                     </Typography>
                   </Grid>
                 </Grid>
@@ -401,23 +535,21 @@ export default function AssetDetailsDrawer({
                     <RowLine
                       icon={<CalendarMonth />}
                       label="Purchase Date"
-                      value={formatShortDate(
-                        asset?.purchaseDate || baseAsset?.purchaseDate
-                      )}
+                      value={formatShortDate(effective?.purchaseDate)}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <RowLine
                       icon={<LocationOn />}
                       label="Location"
-                      value={asset?.location || baseAsset?.location}
+                      value={effective?.location}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <RowLine
                       icon={<CurrencyRupee />}
                       label="Value"
-                      value={money(asset?.value ?? baseAsset?.value)}
+                      value={money(effective?.value)}
                       mono
                     />
                   </Grid>
@@ -425,7 +557,7 @@ export default function AssetDetailsDrawer({
                     <RowLine
                       icon={<Person />}
                       label="Assigned To"
-                      value={asset?.assignedTo || baseAsset?.assignedTo}
+                      value={effective?.name}
                     />
                   </Grid>
                 </Grid>
@@ -461,13 +593,12 @@ export default function AssetDetailsDrawer({
                 </Typography>
               </Box>
 
-              {/* ✅ Scrollable + Responsive Table */}
               <Box sx={{ overflowX: "auto" }}>
                 <Table
                   size="small"
                   sx={{
                     width: "100%",
-                    minWidth: 680,
+                    minWidth: showDeviceActions ? 820 : 680,
                     borderCollapse: "separate",
                     borderSpacing: 0,
                     "& td, & th": { py: "10px", lineHeight: 1.35 },
@@ -488,7 +619,8 @@ export default function AssetDetailsDrawer({
                     <col style={{ width: "20%" }} />
                     <col style={{ width: "25%" }} />
                     <col style={{ width: "20%" }} />
-                    <col style={{ width: "15%" }} />
+                    <col style={{ width: showDeviceActions ? "10%" : "15%" }} />
+                    {showDeviceActions && <col style={{ width: "15%" }} />}
                   </colgroup>
 
                   <TableHead>
@@ -498,13 +630,16 @@ export default function AssetDetailsDrawer({
                       <TableCell>Serial</TableCell>
                       <TableCell>Notes</TableCell>
                       <TableCell>Added On</TableCell>
+                      {showDeviceActions && (
+                        <TableCell align="right">Actions</TableCell>
+                      )}
                     </TableRow>
                   </TableHead>
 
                   <TableBody>
                     {serials.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5}>
+                        <TableCell colSpan={showDeviceActions ? 6 : 5}>
                           <Typography
                             variant="body2"
                             color="text.secondary"
@@ -519,17 +654,15 @@ export default function AssetDetailsDrawer({
                         const dt = resolveDeviceType(s, deviceTypes);
                         const br = resolveBrand(s, brands);
                         const addedRaw =
-                          s.createdAt ||
-                          asset?.createdAt ||
-                          baseAsset?.createdAt ||
-                          null;
+                          s.createdAt || effective?.createdAt || null;
                         const addedOn = formatShortDate(addedRaw);
 
+                        const isPendingDevice =
+                          isEmployee &&
+                          String(s?.status || "").toLowerCase() === "pending";
+
                         return (
-                          <TableRow
-                            key={`${asset?._id || baseAsset?._id}-sn-${idx}`}
-                            hover
-                          >
+                          <TableRow key={`${effective?._id}-sn-${idx}`} hover>
                             <TableCell>
                               <Stack
                                 direction="row"
@@ -645,10 +778,7 @@ export default function AssetDetailsDrawer({
                             </TableCell>
 
                             <TableCell
-                              sx={{
-                                minWidth: 140,
-                                whiteSpace: "nowrap",
-                              }}
+                              sx={{ minWidth: 140, whiteSpace: "nowrap" }}
                             >
                               <Typography
                                 variant="body2"
@@ -659,6 +789,73 @@ export default function AssetDetailsDrawer({
                                 {addedOn}
                               </Typography>
                             </TableCell>
+
+                            {showDeviceActions && (
+                              <TableCell align="right">
+                                {isPendingDevice ? (
+                                  <Stack
+                                    direction="row"
+                                    spacing={0.5}
+                                    justifyContent="flex-end"
+                                  >
+                                    <Tooltip title="Accept device">
+                                      <span>
+                                        <Button
+                                          size="small"
+                                          variant="outlined"
+                                          startIcon={<CheckCircle />}
+                                          disabled={
+                                            submittingDeviceId === s._id
+                                          }
+                                          onClick={() =>
+                                            updateDeviceStatus(s, "Active")
+                                          }
+                                          sx={{
+                                            borderRadius: "8px",
+                                            minWidth: 0,
+                                          }}
+                                        >
+                                          Accept
+                                        </Button>
+                                      </span>
+                                    </Tooltip>
+                                    <Tooltip title="Reject device">
+                                      <span>
+                                        <Button
+                                          size="small"
+                                          color="error"
+                                          variant="outlined"
+                                          startIcon={<DoNotDisturb />}
+                                          disabled={
+                                            submittingDeviceId === s._id
+                                          }
+                                          onClick={() =>
+                                            updateDeviceStatus(s, "Rejected")
+                                          }
+                                          sx={{
+                                            borderRadius: "8px",
+                                            minWidth: 0,
+                                          }}
+                                        >
+                                          Reject
+                                        </Button>
+                                      </span>
+                                    </Tooltip>
+                                  </Stack>
+                                ) : (
+                                  <Tooltip title="Copy serial">
+                                    <IconButton
+                                      size="small"
+                                      onClick={() =>
+                                        copyToClipboard(s.serial || "")
+                                      }
+                                    >
+                                      <ContentCopy fontSize="inherit" />
+                                    </IconButton>
+                                  </Tooltip>
+                                )}
+                              </TableCell>
+                            )}
                           </TableRow>
                         );
                       })
@@ -689,8 +886,8 @@ export default function AssetDetailsDrawer({
                       mt={0.5}
                       flexWrap="wrap"
                     >
-                      {(asset?.tags || baseAsset?.tags || []).length ? (
-                        (asset?.tags || baseAsset?.tags).map((t, i) => (
+                      {(effective?.tags || []).length ? (
+                        (effective?.tags || []).map((t, i) => (
                           <Chip
                             key={`${t}-${i}`}
                             size="small"
@@ -708,18 +905,14 @@ export default function AssetDetailsDrawer({
                     <RowLine
                       icon={<CalendarMonth />}
                       label="Created"
-                      value={formatShortDate(
-                        asset?.createdAt || baseAsset?.createdAt
-                      )}
+                      value={formatShortDate(effective?.createdAt)}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <RowLine
                       icon={<CalendarMonth />}
                       label="Updated"
-                      value={formatShortDate(
-                        asset?.updatedAt || baseAsset?.updatedAt
-                      )}
+                      value={formatShortDate(effective?.updatedAt)}
                     />
                   </Grid>
                 </Grid>
@@ -728,6 +921,14 @@ export default function AssetDetailsDrawer({
           </>
         )}
       </Box>
+
+      {/* Snackbar for quick feedback */}
+      <Snackbar
+        open={snack.open}
+        autoHideDuration={2200}
+        onClose={() => setSnack((s) => ({ ...s, open: false }))}
+        message={snack.msg}
+      />
     </Drawer>
   );
 }

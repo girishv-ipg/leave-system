@@ -1,52 +1,157 @@
+// services/assets.service.js
 const { ObjectId } = require("mongodb");
-// const { getDb } = require("../lib/mongo");
 const Assets = require("../models/assets");
 const User = require("../models/user");
 const DeviceType = require("../models/deviceType");
 const Brand = require("../models/brand");
 
-// submit new asset information
+// helpers: extract user either from req.user or from request body
+const extractUserFromRequest = (req) => {
+  // if you later add authenticate middleware, this will work automatically
+  if (req.user) return req.user;
+
+  // preferred: front-end sends { user: {...} } in body
+  if (req.body && req.body.user) {
+    return req.body.user;
+  }
+
+  // fallback: maybe user fields are at root of body
+  const { userId, _id, id, role, name, email, employeeCode } = req.body || {};
+
+  if (!userId && !_id && !id && !role && !name && !email && !employeeCode) {
+    return null;
+  }
+
+  const uid = _id || userId || id;
+
+  return {
+    _id: uid,
+    id: uid,
+    role,
+    name,
+    email,
+    employeeCode,
+  };
+};
+
+/* -------------------- helpers -------------------- */
+function roleOf(userOrString) {
+  const r =
+    typeof userOrString === "string" ? userOrString : userOrString?.role;
+  return String(r || "")
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Check if user has privileged role (non-employee).
+ * You can adjust the list as per your system.
+ */
+const isPrivilegedRole = (user) => {
+  const role = String(user?.role || "")
+    .trim()
+    .toLowerCase();
+  return ["admin", "manager", "hr", "finance"].includes(role);
+};
+
+function canEmployeeActOnAsset({ asset, user }) {
+  if (!user) return false;
+  const role = roleOf(user);
+  if (role !== "employee") return true; // admins/managers/etc can act
+  return (
+    asset?.assignedTo &&
+    String(asset.assignedTo).toLowerCase() ===
+      String(user.employeeCode || "").toLowerCase()
+  );
+}
+/**
+ * Normalize any status to lower-case, with a safe fallback.
+ * Used to handle null/undefined/empty/extra spaces gracefully.
+ */
+const normalizeStatus = (value, fallback = "Pending") =>
+  String(value || fallback)
+    .trim()
+    .toLowerCase();
+
+/**
+ * Given an array of serials, recompute the assetStatus:
+ * - If any device is Pending -> "Pending"
+ * - Else if all Accepted      -> "Accepted"
+ * - Else if all Rejected      -> "Rejected"
+ * - Else (mix of A/R, no P)   -> "Rejected"
+ */
+const computeAssetStatusFromDevices = (serials) => {
+  if (!Array.isArray(serials) || serials.length === 0) {
+    // If no devices, we won't force any status here;
+    // caller can decide what to do (often keep current).
+    return null;
+  }
+
+  const normalizedStatuses = serials.map((s) =>
+    normalizeStatus(s.deviceStatus, "Pending")
+  );
+
+  const anyPending = normalizedStatuses.includes("pending");
+  const allAccepted =
+    !anyPending && normalizedStatuses.every((st) => st === "accepted");
+  const allRejected =
+    !anyPending && normalizedStatuses.every((st) => st === "rejected");
+
+  if (anyPending) return "Pending";
+  if (allAccepted) return "Accepted";
+  if (allRejected) return "Rejected";
+
+  // Mixed Accepted + Rejected but no Pending -> treat asset as Rejected
+  return "Rejected";
+};
+
+/**
+ * Check if a string is a valid approval decision.
+ */
+const isApproval = (value) => {
+  const v = String(value || "")
+    .trim()
+    .toLowerCase();
+  return v === "accepted" || v === "rejected";
+};
+
+/* -------------------- create -------------------- */
 const submitAssetInformation = async (req, res) => {
   try {
-    const user = req.user;
-
+    const user = req.user || null;
     const {
       name,
       type,
       description,
-      serialNumbers, // updated field
+      serialNumbers,
       purchaseDate,
       location,
       value,
-      status,
-      assignedTo,
+      status, // lifecycle (optional) -> default "Active"
+      assetStatus, // approval (optional) -> default "Pending"
+      assignedTo, // employeeCode string
       tags,
     } = req.body;
 
-    // Basic validation
     if (!name || !type) {
       return res.status(400).json({ error: "Name and type are required." });
     }
-
-    // Validate serialNumbers array if provided
     if (serialNumbers && !Array.isArray(serialNumbers)) {
       return res.status(400).json({ error: "serialNumbers must be an array." });
     }
 
-    // Check assigned user (optional)
+    // Optional: verify assigned user exists
     let assignedUser = null;
     if (assignedTo) {
       assignedUser = await User.findOne({ employeeCode: assignedTo }).select(
-        "-password"
+        "name employeeCode"
       );
-      if (!assignedUser) {
+      if (!assignedUser)
         return res.status(404).json({ error: "Assigned user not found." });
-      }
     }
 
-    // Construct the new asset document
-    const newAsset = new Assets({
-      name: name.trim(),
+    const doc = new Assets({
+      name: String(name).trim(),
       type,
       description: description?.trim() || "",
       serialNumbers: Array.isArray(serialNumbers)
@@ -55,210 +160,157 @@ const submitAssetInformation = async (req, res) => {
             brand: s.brand,
             serial: s.serial?.trim(),
             notes: s.notes?.trim() || "",
+            deviceStatus: s.deviceStatus || "Pending",
           }))
         : [],
       purchaseDate: purchaseDate ? new Date(purchaseDate) : null,
       location: location?.trim() || "",
       value: value ? Number(value) : 0,
-      status: status || "Active",
+      status: status || "Active", // lifecycle default
+      assetStatus: assetStatus || "Pending", // approval default
       assignedTo: assignedUser ? assignedUser.employeeCode : null,
       tags: Array.isArray(tags) ? tags : [],
       isDeleted: false,
-      createdBy: user?._id || null, // optional if you track who added it
+      createdBy: user?._id || null,
     });
 
-    // Save the new asset
-    const result = await newAsset.save();
-
-    res.status(201).json({
-      message: "✅ Asset saved successfully",
-      assetId: result._id,
-      asset: result,
-    });
+    const saved = await doc.save();
+    return res
+      .status(201)
+      .json({ message: "✅ Asset saved", assetId: saved._id, asset: saved });
   } catch (error) {
-    console.error("❌ Asset submission failed:", error);
-
-    // Handle duplicate key errors (unique compound index violation)
-    if (error.code === 11000) {
+    console.error("submitAssetInformation failed:", error);
+    if (error?.code === 11000) {
       return res.status(409).json({
         error:
           "Duplicate deviceType-brand-serial combination detected. Each serial must be unique across all assets.",
       });
     }
-
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
   }
 };
 
-// Get All Assets
+/* -------------------- read -------------------- */
 const getAllAssets = async (req, res) => {
   try {
     const { employeeCode, role } = req.query;
     let assets = [];
 
-    if (
-      role === "admin" ||
-      role === "manager" ||
-      role === "hr" ||
-      role === "finance"
-    ) {
-      // Admins/managers can see all assets
-      assets = await Assets.find({ isDeleted: { $ne: true } }).exec();
+    if (["admin", "manager", "hr", "finance"].includes(String(role))) {
+      assets = await Assets.find({ isDeleted: { $ne: true } })
+        .sort({ createdAt: -1 })
+        .exec();
     } else {
-      // Employees see only their own asset
       assets = await Assets.find({
         $and: [
           { isDeleted: { $ne: true } },
-          {
-            $or: [{ assignedTo: employeeCode }],
-          },
-          { assignedTo: { $ne: null } }, // exclude null or unassigned
+          { assignedTo: employeeCode },
+          { assignedTo: { $ne: null } },
         ],
-      }).exec();
+      })
+        .sort({ createdAt: -1 })
+        .exec();
     }
 
-    res.status(200).json(assets);
+    return res.status(200).json(assets);
   } catch (error) {
-    console.error("Failed to fetch assets:", error);
-    res.status(500).json({
-      error: "Failed to fetch assets",
-      details: error.message,
-    });
+    console.error("getAllAssets failed:", error);
+    return res
+      .status(500)
+      .json({ error: "Failed to fetch assets", details: error.message });
   }
 };
 
-/**
- * READ ONE: Get Asset by ID
- *
- */
 const getAssetById = async (req, res) => {
   try {
     const assetId = req.params.id;
-
-    // Validate ObjectId
-    if (!ObjectId.isValid(assetId)) {
+    if (!ObjectId.isValid(assetId))
       return res.status(400).json({ error: "Invalid asset ID" });
-    }
 
-    // Find the asset and ensure it's not deleted
     const asset = await Assets.findOne({
       _id: assetId,
       isDeleted: { $ne: true },
     });
+    if (!asset) return res.status(404).json({ error: "Asset not found" });
 
-    if (!asset) {
-      return res.status(404).json({ error: "Asset not found" });
-    }
-
-    // Look up assigned user by employeeCode
-    if (asset.assignedTo) {
-      const user = await User.findOne({
-        employeeCode: asset.assignedTo,
-      }).select("name employeeCode");
-
-      if (user) {
-        // Replace assignedTo with "employeeCode name"
-        asset.assignedTo = `${user.name}`;
-      }
-    }
-
-    res.status(200).json(asset);
+    return res.status(200).json(asset);
   } catch (error) {
-    console.error("Failed to fetch asset:", error);
-    res.status(500).json({
-      error: "Failed to fetch asset",
-      details: error.message,
-    });
+    console.error("getAssetById failed:", error);
+    return res
+      .status(500)
+      .json({ error: "Failed to fetch asset", details: error.message });
   }
 };
 
-// UPDATE: Update Asset by ID
+/* -------------------- update (general) -------------------- */
 const updateAssetById = async (req, res) => {
   try {
-    // const db = await getDb();
     const assetId = req.params.id;
-
-    if (!ObjectId.isValid(assetId)) {
+    if (!ObjectId.isValid(assetId))
       return res.status(400).json({ error: "Invalid asset ID" });
-    }
 
     const updateFields = { ...req.body, updatedAt: new Date() };
-
-    if (updateFields.assignedTo) {
-      updateFields.assignedTo = updateFields.assignedTo;
-    }
-
-    if (updateFields.purchaseDate) {
+    if (updateFields.purchaseDate)
       updateFields.purchaseDate = new Date(updateFields.purchaseDate);
+    if (
+      updateFields.serialNumbers &&
+      !Array.isArray(updateFields.serialNumbers)
+    ) {
+      return res.status(400).json({ error: "serialNumbers must be an array." });
     }
 
-    // Use Mongoose's findOneAndUpdate with the { new: true } option to return the updated document
     const result = await Assets.findOneAndUpdate(
-      { _id: assetId, isDeleted: { $ne: true } }, // Ensure asset is not deleted
+      { _id: assetId, isDeleted: { $ne: true } },
       { $set: updateFields },
-      { new: true } // This returns the updated asset
+      { new: true, runValidators: true }
     );
+    if (!result) return res.status(404).json({ error: "Asset not found" });
 
-    if (!result) {
-      return res.status(404).json({ error: "Asset not found" });
-    }
-
-    res.status(200).json({
-      message: "Asset updated successfully",
-      asset: result,
-    });
+    return res.status(200).json({ message: "Asset updated", asset: result });
   } catch (error) {
-    console.error("Failed to update asset:", error);
-    res
+    console.error("updateAssetById failed:", error);
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        error:
+          "Duplicate deviceType-brand-serial combination detected. Each serial must be unique across all assets.",
+      });
+    }
+    return res
       .status(500)
       .json({ error: "Failed to update asset", details: error.message });
   }
 };
 
+/* -------------------- delete (soft) -------------------- */
 const deleteAssetById = async (req, res) => {
   try {
-    // const db = await getDb();
     const assetId = req.params.id;
-
-    if (!ObjectId.isValid(assetId)) {
+    if (!ObjectId.isValid(assetId))
       return res.status(400).json({ error: "Invalid asset ID" });
-    }
 
-    // Soft delete the asset by marking it as isDeleted = true
     const result = await Assets.findOneAndUpdate(
-      { _id: assetId, isDeleted: { $ne: true } }, // Only update if not already deleted
-      {
-        $set: {
-          isDeleted: true,
-          updatedAt: new Date(),
-        },
-      },
-      { new: true } // Return the updated asset
+      { _id: assetId, isDeleted: { $ne: true } },
+      { $set: { isDeleted: true, updatedAt: new Date() } },
+      { new: true }
     );
-
-    if (!result) {
+    if (!result)
       return res
         .status(404)
         .json({ error: "Asset not found or already deleted" });
-    }
 
-    res.status(200).json({
-      message: "Asset soft-deleted successfully",
-      asset: result,
-    });
+    return res
+      .status(200)
+      .json({ message: "Asset soft-deleted", asset: result });
   } catch (error) {
-    res
+    return res
       .status(500)
       .json({ error: "Failed to soft-delete asset", details: error.message });
   }
 };
 
-/**
- * Get all device names — always includes defaults
- */
-const getAllDeviceName = async (req, res) => {
+/* -------------------- catalog -------------------- */
+const getAllDeviceName = async (_req, res) => {
   try {
-    // Define your default device names
     const defaultDevices = [
       "Laptop",
       "Desktop",
@@ -269,48 +321,35 @@ const getAllDeviceName = async (req, res) => {
       "Headset",
       "Server",
     ];
-
-    // Fetch all existing devices from DB
-    const existingDevices = await DeviceType.find().exec();
-    const existingNames = existingDevices.map((d) =>
-      d.name.trim().toLowerCase()
+    const existing = await DeviceType.find().exec();
+    const existingNames = new Set(
+      existing.map((d) => d.name.trim().toLowerCase())
     );
-
-    // Determine which default devices are missing
-    const missingDevices = defaultDevices.filter(
-      (d) => !existingNames.includes(d.toLowerCase())
+    const missing = defaultDevices.filter(
+      (d) => !existingNames.has(d.toLowerCase())
     );
-
-    // If some defaults are missing, insert them automatically
-    if (missingDevices.length > 0) {
-      const toInsert = missingDevices.map((name) => ({
-        name,
-        isActive: true,
-        icon: "",
-        assetCategory: "Hardware", // optional: default category
-      }));
-      await DeviceType.insertMany(toInsert);
+    if (missing.length > 0) {
+      await DeviceType.insertMany(
+        missing.map((name) => ({
+          name,
+          isActive: true,
+          icon: "",
+          assetCategory: "Hardware",
+        }))
+      );
     }
-
-    // Re-fetch all devices (including newly added defaults)
-    const allDevices = await DeviceType.find().sort({ name: 1 }).exec();
-
-    return res.status(200).json(allDevices);
+    const all = await DeviceType.find().sort({ name: 1 }).exec();
+    return res.status(200).json(all);
   } catch (error) {
-    console.error("Error fetching device names:", error);
-    return res.status(500).json({
-      message: "Internal server error while fetching device names",
-      error: error.message,
-    });
+    console.error("getAllDeviceName failed:", error);
+    return res
+      .status(500)
+      .json({ message: "Error fetching device names", error: error.message });
   }
 };
 
-/**
- * Get all brand names — always includes defaults
- */
-const getAllBrandName = async (req, res) => {
+const getAllBrandName = async (_req, res) => {
   try {
-    // Define default brand list
     const defaultBrands = [
       "Dell",
       "HP",
@@ -321,108 +360,494 @@ const getAllBrandName = async (req, res) => {
       "Acer",
       "Fortinet",
     ];
-
-    // Fetch existing brands
-    const existingBrands = await Brand.find().exec();
-    const existingNames = existingBrands.map((b) =>
-      b.name.trim().toLowerCase()
+    const existing = await Brand.find().exec();
+    const existingNames = new Set(
+      existing.map((b) => b.name.trim().toLowerCase())
     );
-
-    // Identify missing defaults
-    const missingBrands = defaultBrands.filter(
-      (b) => !existingNames.includes(b.toLowerCase())
+    const missing = defaultBrands.filter(
+      (b) => !existingNames.has(b.toLowerCase())
     );
-
-    // Insert missing ones if any
-    if (missingBrands.length > 0) {
-      const toInsert = missingBrands.map((name) => ({
-        name,
-        isActive: true,
-      }));
-      await Brand.insertMany(toInsert);
+    if (missing.length > 0) {
+      await Brand.insertMany(missing.map((name) => ({ name, isActive: true })));
     }
-
-    // Fetch final sorted list
-    const allBrands = await Brand.find().sort({ name: 1 }).exec();
-
-    return res.status(200).json(allBrands);
+    const all = await Brand.find().sort({ name: 1 }).exec();
+    return res.status(200).json(all);
   } catch (error) {
-    console.error("Error fetching brand names:", error);
-    return res.status(500).json({
-      message: "Internal server error while fetching brand names",
-      error: error.message,
-    });
+    console.error("getAllBrandName failed:", error);
+    return res
+      .status(500)
+      .json({ message: "Error fetching brand names", error: error.message });
   }
 };
 
-/**
- * Create a new brand
- */
 const createBrand = async (req, res) => {
   try {
     const { name, isActive } = req.body;
-
     if (!name || typeof name !== "string") {
       return res
         .status(400)
         .json({ message: "Brand name is required and must be a string" });
     }
-
-    const existingBrand = await Brand.findOne({ name: name.trim() });
-    if (existingBrand) {
+    const existing = await Brand.findOne({ name: name.trim() });
+    if (existing)
       return res.status(409).json({ message: "Brand already exists" });
-    }
 
-    const brand = new Brand({
+    const saved = await new Brand({
       name: name.trim(),
-      isActive: isActive !== undefined ? isActive : true,
-    });
-
-    const savedBrand = await brand.save();
-    return res.status(201).json(savedBrand);
+      isActive: isActive ?? true,
+    }).save();
+    return res.status(201).json(saved);
   } catch (error) {
-    console.error("Error creating brand:", error);
+    console.error("createBrand failed:", error);
     return res
       .status(500)
       .json({ message: "Failed to create brand", error: error.message });
   }
 };
 
-/**
- * Create a new device type
- */
 const createDeviceType = async (req, res) => {
   try {
     const { name, icon, isActive } = req.body;
-
     if (!name || typeof name !== "string") {
+      return res.status(400).json({
+        message: "Device type name is required and must be a string",
+      });
+    }
+    const existing = await DeviceType.findOne({ name: name.trim() });
+    if (existing)
+      return res.status(409).json({ message: "Device type already exists" });
+
+    const saved = await new DeviceType({
+      name: name.trim(),
+      icon: icon?.trim() || "",
+      isActive: isActive ?? true,
+    }).save();
+    return res.status(201).json(saved);
+  } catch (error) {
+    console.error("createDeviceType failed:", error);
+    return res.status(500).json({
+      message: "Failed to create device type",
+      error: error.message,
+    });
+  }
+};
+/* -----------------------------------------------------
+ * PATCH /api/assets/:id/status
+ * Body: { decision: "Accepted" | "Rejected" }
+ *
+ * Rules:
+ *  - Only privileged roles.
+ *  - Always set asset.assetStatus to decision (no "already decided" 409).
+ *  - For each device whose deviceStatus is Pending (or empty) -> set to decision.
+ *  - Rejected assets can move back to Pending/Accepted later via other flows.
+ * --------------------------------------------------- */
+const updateAssetStatus = async (req, res) => {
+  try {
+    const assetId = req.params.id;
+    const { decision } = req.body;
+
+    // 🔑 READ USER FROM REQUEST (body or req.user)
+    const user = extractUserFromRequest(req);
+    // console.log("updateAssetStatus -> user:", user, "body:", req.body);
+
+    if (!ObjectId.isValid(assetId)) {
+      return res.status(400).json({ error: "Invalid asset ID" });
+    }
+
+    if (!isApproval(decision)) {
       return res
         .status(400)
-        .json({ message: "Device type name is required and must be a string" });
+        .json({ error: 'decision must be "Accepted" or "Rejected"' });
     }
 
-    const existingDevice = await DeviceType.findOne({ name: name.trim() });
-    if (existingDevice) {
-      return res.status(409).json({ message: "Device type already exists" });
+    // 🔐 Only non-employee roles can update approval status
+    if (!isPrivilegedRole(user)) {
+      return res.status(403).json({
+        error: "Not allowed to update this asset (insufficient role)",
+      });
     }
 
-    const deviceType = new DeviceType({
-      name: name.trim(),
-      icon: icon?.trim(),
-      isActive: isActive !== undefined ? isActive : true,
+    const asset = await Assets.findOne({
+      _id: assetId,
+      isDeleted: { $ne: true },
     });
 
-    const savedDeviceType = await deviceType.save();
-    return res.status(201).json(savedDeviceType);
-  } catch (error) {
-    console.error("Error creating device type:", error);
+    if (!asset) {
+      return res.status(404).json({ error: "Asset not found" });
+    }
+
+    const now = new Date();
+    const normalizedDecision =
+      normalizeStatus(decision) === "accepted" ? "Accepted" : "Rejected";
+
+    // Set asset status directly
+    asset.assetStatus = normalizedDecision;
+
+    // Cascade to PENDING devices only
+    (asset.serialNumbers || []).forEach((s) => {
+      const devStatus = normalizeStatus(s.deviceStatus, "Pending");
+      if (devStatus === "pending") {
+        s.deviceStatus = normalizedDecision; // Accepted/Rejected
+        s.decidedAt = now;
+        if (user?._id) s.decidedBy = user._id;
+      }
+    });
+
+    asset.updatedBy = user?._id || asset.updatedBy;
+    asset.updatedAt = now;
+
+    await asset.save();
     return res
-      .status(500)
-      .json({ message: "Failed to create device type", error: error.message });
+      .status(200)
+      .json({ message: `Asset ${normalizedDecision}`, asset });
+  } catch (error) {
+    console.error("updateAssetStatus failed:", error);
+    return res.status(500).json({
+      error: "Failed to update asset approval",
+      details: error.message,
+    });
   }
 };
 
-// export services
+/* -----------------------------------------------------
+ * PATCH /api/assets/:id/serials/:serialId/status
+ * Body: { decision: "Accepted" | "Rejected" }
+ *
+ * Rules:
+ *  - Only privileged roles.
+ *  - Only devices currently Pending (or empty) can be updated.
+ *  - After updating one device:
+ *      * If ANY device is Pending -> asset.assetStatus = "Pending"
+ *      * Else if ALL devices are Accepted -> asset.assetStatus = "Accepted"
+ *      * Else if ALL devices are Rejected -> asset.assetStatus = "Rejected"
+ *      * Else (mix of Accepted & Rejected, no Pending) -> asset.assetStatus = "Rejected"
+ *
+ * Examples:
+ *  - 5 devices, approve 1, others still Pending -> assetStatus = "Pending"
+ *  - All 5 Rejected -> assetStatus = "Rejected"
+ *  - All 5 Accepted -> assetStatus = "Accepted"
+ * --------------------------------------------------- */
+const updateDeviceStatus = async (req, res) => {
+  try {
+    const { id: assetId, serialId } = req.params;
+    const { decision } = req.body;
+
+    // 🔑 READ USER FROM REQUEST (body or req.user)
+    const user = extractUserFromRequest(req);
+    // console.log("updateDeviceStatus -> user:", user);
+    // console.log("updateDeviceStatus -> params:", req.params);
+
+    if (!ObjectId.isValid(assetId)) {
+      return res.status(400).json({ error: "Invalid asset ID" });
+    }
+
+    // serialId may be either a subdoc _id or a serial string
+    if (!serialId) {
+      return res.status(400).json({ error: "serialId is required" });
+    }
+
+    if (!isApproval(decision)) {
+      return res
+        .status(400)
+        .json({ error: 'decision must be "Accepted" or "Rejected"' });
+    }
+
+    // 🔐 Only non-employee roles can update device approval
+    if (!isPrivilegedRole(user)) {
+      return res.status(403).json({
+        error: "Not allowed to update this device (insufficient role)",
+      });
+    }
+
+    const asset = await Assets.findOne({
+      _id: assetId,
+      isDeleted: { $ne: true },
+    });
+
+    if (!asset) {
+      return res.status(404).json({ error: "Asset not found" });
+    }
+
+    const serials = asset.serialNumbers || [];
+
+    // 🔍 DEBUG: log what serials we actually have
+    // console.log(
+    //   "updateDeviceStatus -> available serials:",
+    //   serials.map((s) => ({
+    //     _id: s._id,
+    //     serial: s.serial,
+    //     deviceStatus: s.deviceStatus,
+    //   }))
+    // );
+
+    // 1) Try match by subdocument _id
+    let entry = serials.find((s) => String(s._id) === String(serialId));
+
+    // 2) Fallback: try match by serial string itself
+    if (!entry) {
+      entry = serials.find((s) => String(s.serial) === String(serialId));
+    }
+
+    if (!entry) {
+      return res.status(404).json({
+        error: "Device (serial) not found",
+        details: {
+          assetId,
+          serialId,
+        },
+      });
+    }
+
+    // Only update if device is currently Pending (or empty)
+    const currentDevStatus = normalizeStatus(entry.deviceStatus, "Pending");
+    if (currentDevStatus !== "pending") {
+      return res.status(409).json({
+        error: `Device already ${entry.deviceStatus || "decided"}`,
+      });
+    }
+
+    const now = new Date();
+    const normalizedDecision =
+      normalizeStatus(decision) === "accepted" ? "Accepted" : "Rejected";
+
+    // ✅ Update this device
+    entry.deviceStatus = normalizedDecision;
+    entry.decidedAt = now;
+    if (user?._id) entry.decidedBy = user._id;
+
+    // ✅ Recompute asset.assetStatus from all serials
+    const newAssetStatus = computeAssetStatusFromDevices(serials);
+    if (newAssetStatus) {
+      asset.assetStatus = newAssetStatus;
+    }
+
+    asset.updatedBy = user?._id || asset.updatedBy;
+    asset.updatedAt = now;
+
+    await asset.save();
+    return res
+      .status(200)
+      .json({ message: `Device ${normalizedDecision}`, asset });
+  } catch (error) {
+    console.error("updateDeviceStatus failed:", error);
+    return res.status(500).json({
+      error: "Failed to update device approval",
+      details: error.message,
+    });
+  }
+};
+
+/**
+ * EMPLOYEE ENDPOINT
+ * PATCH /api/assets/:id/employee-status
+ * Body: { decision: "Accepted" | "Rejected", user: { _id, employeeCode, ... } }
+ *
+ * Semantics:
+ * - Only the assigned employee (asset.assignedTo === user.employeeCode) can use this.
+ * - Works on the SAME fields as admin:
+ *      assetStatus (asset) + deviceStatus (each serial)
+ * - Action:
+ *      - For each device whose deviceStatus is Pending -> set to decision
+ *      - Recompute assetStatus from deviceStatus of all serials
+ */
+const updateEmployeeAssetStatus = async (req, res) => {
+  try {
+    const assetId = req.params.id;
+    const { decision, user } = req.body;
+
+    if (!ObjectId.isValid(assetId)) {
+      return res.status(400).json({ error: "Invalid asset ID" });
+    }
+
+    if (!isApproval(decision)) {
+      return res
+        .status(400)
+        .json({ error: 'decision must be "Accepted" or "Rejected"' });
+    }
+
+    if (!user || !user.employeeCode) {
+      return res.status(400).json({
+        error: "user with employeeCode is required in body",
+      });
+    }
+
+    const asset = await Assets.findOne({
+      _id: assetId,
+      isDeleted: { $ne: true },
+    });
+
+    if (!asset) {
+      return res.status(404).json({ error: "Asset not found" });
+    }
+
+    // ✅ Only assigned employee can act here
+    const isAssignedToThisEmployee =
+      String(asset.assignedTo || "").toLowerCase() ===
+      String(user.employeeCode || "").toLowerCase();
+
+    if (!isAssignedToThisEmployee) {
+      return res.status(403).json({
+        error:
+          "You are not the assigned employee for this asset, so you cannot change its status.",
+      });
+    }
+
+    const now = new Date();
+    const normalizedDecision =
+      normalizeStatus(decision) === "accepted" ? "Accepted" : "Rejected";
+
+    // 🔹 Update PENDING devices to the employee's decision
+    const serials = asset.serialNumbers || [];
+    serials.forEach((s) => {
+      const current = normalizeStatus(s.deviceStatus, "Pending");
+      if (current === "pending") {
+        s.deviceStatus = normalizedDecision;
+        s.decidedAt = now;
+        s.decidedBy = user._id || user.id || null;
+      }
+    });
+
+    // 🔹 Recompute assetStatus from deviceStatus
+    const newAssetStatus = computeAssetStatusFromDevices(serials);
+    if (newAssetStatus) {
+      asset.assetStatus = newAssetStatus;
+    }
+
+    asset.updatedAt = now;
+    asset.updatedBy = user._id || user.id || null;
+
+    await asset.save();
+    return res.status(200).json({
+      message: `Employee set asset to ${asset.assetStatus}`,
+      asset,
+    });
+  } catch (error) {
+    console.error("updateEmployeeAssetStatus failed:", error);
+    return res.status(500).json({
+      error: "Failed to update employee asset status",
+      details: error.message,
+    });
+  }
+};
+
+/**
+ * EMPLOYEE ENDPOINT
+ * PATCH /api/assets/:id/serials/:serialId/employee-status
+ * Body: { decision: "Accepted" | "Rejected", user: { _id, employeeCode, ... } }
+ *
+ * Semantics:
+ * - Only the assigned employee (asset.assignedTo === user.employeeCode).
+ * - Works on the SAME fields:
+ *      deviceStatus on that device + recompute assetStatus.
+ */
+const updateEmployeeDeviceStatus = async (req, res) => {
+  try {
+    const { id: assetId, serialId } = req.params;
+    const { decision, user } = req.body;
+
+    if (!ObjectId.isValid(assetId)) {
+      return res.status(400).json({ error: "Invalid asset ID" });
+    }
+    if (!serialId) {
+      return res.status(400).json({ error: "serialId is required" });
+    }
+
+    if (!isApproval(decision)) {
+      return res
+        .status(400)
+        .json({ error: 'decision must be "Accepted" or "Rejected"' });
+    }
+
+    if (!user || !user.employeeCode) {
+      return res.status(400).json({
+        error: "user with employeeCode is required in body",
+      });
+    }
+
+    const asset = await Assets.findOne({
+      _id: assetId,
+      isDeleted: { $ne: true },
+    });
+
+    if (!asset) {
+      return res.status(404).json({ error: "Asset not found" });
+    }
+
+    // ✅ Only assigned employee can act
+    const isAssignedToThisEmployee =
+      String(asset.assignedTo || "").toLowerCase() ===
+      String(user.employeeCode || "").toLowerCase();
+
+    if (!isAssignedToThisEmployee) {
+      return res.status(403).json({
+        error:
+          "You are not the assigned employee for this asset, so you cannot change device status.",
+      });
+    }
+
+    const serials = asset.serialNumbers || [];
+
+    // console.log(
+    //   "updateEmployeeDeviceStatus -> serials:",
+    //   serials.map((s) => ({
+    //     _id: s._id,
+    //     serial: s.serial,
+    //     deviceStatus: s.deviceStatus,
+    //   }))
+    // );
+
+    // find serial by _id or serial string
+    let entry = serials.find((s) => String(s._id) === String(serialId));
+    if (!entry) {
+      entry = serials.find((s) => String(s.serial) === String(serialId));
+    }
+
+    if (!entry) {
+      return res.status(404).json({
+        error: "Device (serial) not found",
+        details: { assetId, serialId },
+      });
+    }
+
+    const currentStatus = normalizeStatus(entry.deviceStatus, "Pending");
+    if (currentStatus !== "pending") {
+      return res.status(409).json({
+        error: `Device already ${entry.deviceStatus || "decided"}`,
+      });
+    }
+
+    const now = new Date();
+    const normalizedDecision =
+      normalizeStatus(decision) === "accepted" ? "Accepted" : "Rejected";
+
+    // 🔹 Update this device only
+    entry.deviceStatus = normalizedDecision;
+    entry.decidedAt = now;
+    entry.decidedBy = user._id || user.id || null;
+
+    // 🔹 Recompute assetStatus from all deviceStatus
+    const newAssetStatus = computeAssetStatusFromDevices(serials);
+    if (newAssetStatus) {
+      asset.assetStatus = newAssetStatus;
+    }
+
+    asset.updatedAt = now;
+    asset.updatedBy = user._id || user.id || null;
+
+    await asset.save();
+    return res.status(200).json({
+      message: `Employee set device to ${normalizedDecision}`,
+      asset,
+    });
+  } catch (error) {
+    console.error("updateEmployeeDeviceStatus failed:", error);
+    return res.status(500).json({
+      error: "Failed to update employee device status",
+      details: error.message,
+    });
+  }
+};
+
 module.exports = {
   submitAssetInformation,
   getAllAssets,
@@ -433,4 +858,8 @@ module.exports = {
   getAllBrandName,
   createBrand,
   createDeviceType,
+  updateAssetStatus, // approval endpoint
+  updateDeviceStatus, // approval endpoint
+  updateEmployeeAssetStatus,
+  updateEmployeeDeviceStatus,
 };

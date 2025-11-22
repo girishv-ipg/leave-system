@@ -1,150 +1,57 @@
-// const mongoose = require("mongoose");
-
-// const assetSchema = new mongoose.Schema({
-//   name: {
-//     type: String,
-//     required: true,
-//     trim: true,
-//   },
-
-//   type: {
-//     type: String,
-//     required: true,
-//     enum: [
-//       "Hardware",
-//       "Software",
-//       "Furniture",
-//       "Vehicle",
-//       "Real Estate",
-//       "Other",
-//     ],
-//     default: "Other",
-//   },
-
-//   description: {
-//     type: String,
-//     trim: true,
-//   },
-
-//   serialNumber: {
-//     type: String,
-//     unique: true,
-//     sparse: true,
-//     trim: true,
-//   },
-
-//   purchaseDate: {
-//     type: Date,
-//   },
-
-//   location: {
-//     type: String,
-//     trim: true,
-//   },
-
-//   value: {
-//     type: Number,
-//     min: 0,
-//   },
-
-//   status: {
-//     type: String,
-//     enum: ["Active", "In Maintenance", "Retired", "Lost", "Sold"],
-//     default: "Active",
-//   },
-
-//   assignedTo: {
-//     type: String,
-//     ref: "User",
-//     default: null,
-//   },
-
-//   tags: [
-//     {
-//       type: String,
-//       trim: true,
-//     },
-//   ],
-
-//   isDeleted: {
-//     type: Boolean,
-//     default: false,
-//   },
-
-//   createdAt: {
-//     type: Date,
-//     default: Date.now,
-//   },
-
-//   updatedAt: {
-//     type: Date,
-//     default: Date.now,
-//   },
-// });
-
-// // Automatically update `updatedAt` before saving
-// assetSchema.pre("save", function (next) {
-//   this.updatedAt = Date.now();
-//   next();
-// });
-
-// const Assets = mongoose.model("Assets", assetSchema);
-
-// module.exports = Assets;
-
-// models/Asset.js
+// models/assets.js
 const mongoose = require("mongoose");
+const { Schema } = mongoose;
 
-const serialEntrySchema = new mongoose.Schema(
+/** Each device/serial attached to an asset */
+const serialEntrySchema = new Schema(
   {
     deviceType: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "DeviceType",
       required: true,
     },
-    brand: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Brand",
-      required: true,
-    },
-    serial: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    // optional fields, if you want:
+    brand: { type: Schema.Types.ObjectId, ref: "Brand", required: true },
+    serial: { type: String, required: true, trim: true },
     notes: { type: String, trim: true },
+
+    // lifecycle for the device is implied by the parent asset's lifecycle `status`
+    // NEW: per-device approval (separate from lifecycle)
+    deviceStatus: {
+      type: String,
+      enum: ["Pending", "Accepted", "Rejected"],
+      default: "Pending",
+      index: true,
+    },
+
+    // optional "who/when decided" for this serial
+    decidedAt: { type: Date, default: null },
+    decidedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
   },
-  { _id: false } // subdoc doesn't need its own _id unless you want it
+  {
+    _id: true, // keep subdoc _id so we can PATCH by /serials/:serialId
+    timestamps: true, // createdAt / updatedAt per-serial (optional, nice to have)
+  }
 );
 
-const assetSchema = new mongoose.Schema(
+const assetSchema = new Schema(
   {
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    name: { type: String, required: true, trim: true },
 
     type: {
       type: String,
       required: true,
       enum: ["Hardware", "Software", "Other"],
       default: "Other",
+      index: true,
     },
 
-    description: {
-      type: String,
-      trim: true,
-    },
+    description: { type: String, trim: true },
 
-    // NEW: array of objects (deviceType, brand, serial)
     serialNumbers: {
       type: [serialEntrySchema],
       default: [],
       validate: {
-        validator: function (arr) {
-          // ensure no duplicates within the SAME asset document
+        validator(arr) {
           const seen = new Set();
           for (const s of arr) {
             const key = `${s.deviceType?.toString()}|${s.brand?.toString()}|${(
@@ -163,48 +70,89 @@ const assetSchema = new mongoose.Schema(
     },
 
     purchaseDate: { type: Date },
-
     location: { type: String, trim: true },
 
     value: { type: Number, min: 0 },
 
+    // LIFECYCLE (unchanged): "how the asset lives"
     status: {
       type: String,
       enum: ["Active", "In Maintenance", "Retired", "Lost", "Sold"],
       default: "Active",
+      index: true,
     },
 
-    assignedTo: {
-      type: String, // or mongoose.Schema.Types.ObjectId if you have a User collection
-      ref: "User",
-      default: null,
+    // NEW: asset-level approval (separate from lifecycle)
+    assetStatus: {
+      type: String,
+      enum: ["Pending", "Accepted", "Rejected"],
+      default: "Pending",
+      index: true,
     },
+
+    // ownership reference (you used employeeCode as a string)
+    assignedTo: { type: String, default: null, index: true },
 
     tags: [{ type: String, trim: true }],
 
-    isDeleted: { type: Boolean, default: false },
+    isDeleted: { type: Boolean, default: false, index: true },
+
+    createdBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    updatedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
   },
-  { timestamps: true } // handles createdAt, updatedAt automatically
+  { timestamps: true }
 );
 
-/**
- * Global uniqueness guarantee:
- * Enforce (deviceType, brand, serial) uniqueness across all assets.
- *
- * MongoDB supports unique compound indexes on multikey (array) fields with the
- * restriction that a single document must not contain duplicate combinations,
- * which we already validate above.
- *
- * This index ensures that two different assets cannot reuse the same tuple.
- */
+/** ----------------------------------------------------------------
+ * Indexing
+ * ---------------------------------------------------------------- */
+// manage via migrations in prod
+assetSchema.set("autoIndex", false);
+assetSchema.set("autoCreate", true);
+
+// Unique device tuple across ALL assets (keep from your existing setup)
 assetSchema.index(
   {
     "serialNumbers.deviceType": 1,
     "serialNumbers.brand": 1,
     "serialNumbers.serial": 1,
   },
-  { unique: true, sparse: true, name: "uniq_device_brand_serial" }
+  {
+    unique: true,
+    name: "uniq_device_brand_serial_global",
+    partialFilterExpression: {
+      isDeleted: false,
+      "serialNumbers.serial": { $type: "string" },
+    },
+    background: true,
+  }
 );
 
-const Assets = mongoose.model("Assets", assetSchema);
-module.exports = Assets;
+// Helpful filters
+assetSchema.index({
+  status: 1,
+  assetStatus: 1,
+  assignedTo: 1,
+  isDeleted: 1,
+  type: 1,
+});
+
+/** ----------------------------------------------------------------
+ * Guards (optional)
+ * ---------------------------------------------------------------- */
+assetSchema.methods.canDecideAssetApproval = function () {
+  return String(this.assetStatus) === "Pending";
+};
+
+assetSchema.methods.canDecideDeviceApproval = function (serialId) {
+  const s = (this.serialNumbers || []).find(
+    (x) => String(x._id) === String(serialId)
+  );
+  return !!s && String(s.deviceStatus) === "Pending";
+};
+
+assetSchema.statics.syncMyIndexes = async function () {
+  await this.syncIndexes();
+};
+
+module.exports = mongoose.model("Assets", assetSchema);

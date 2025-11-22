@@ -40,6 +40,7 @@ import {
   CheckCircle,
   ContentCopy,
   Home,
+  HourglassEmpty,
   Info,
   Inventory2,
   KeyboardArrowDown,
@@ -65,8 +66,6 @@ import AssetDetailsDrawer from "@/pages/admin/track-assets/AssetDetailsDrawer";
 import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
 
-// 🔁 Reuse the shared catalog utils from admin
-
 /* ======================= Layout knobs ======================= */
 const ROW_HEIGHT = 10;
 const HEADER_HEIGHT = 44;
@@ -80,6 +79,10 @@ const STATUS_TABS = [
   { value: "Retired", label: "Retired", icon: <ReceiptLong /> },
   { value: "Lost", label: "Lost", icon: <Cancel /> },
   { value: "Sold", label: "Sold", icon: <ReceiptLong /> },
+
+  // employee approval state (derived from assetStatus/deviceStatus)
+  { value: "Pending", label: "My Pending Approvals", icon: <HourglassEmpty /> },
+  { value: "Rejected", label: "My Rejected", icon: <Cancel /> },
 ];
 
 const STATUS_OPTIONS = ["Active", "In Maintenance", "Retired", "Lost", "Sold"];
@@ -94,6 +97,7 @@ const COLUMNS = [
   { id: "value", label: "Value", width: 10 },
   { id: "status", label: "Status", width: 10 },
   { id: "tags", label: "Tags", width: 10 },
+  { id: "actions", label: "Actions", width: 10 },
 ];
 
 /* ======================= Helpers ======================= */
@@ -168,6 +172,12 @@ const formatShortDate = (d) => {
   }
 };
 
+// normalize status string (e.g., "Pending" -> "pending")
+const normalizeStatus = (s, fallback = "pending") =>
+  String(s || fallback)
+    .trim()
+    .toLowerCase();
+
 // Stable id for expand/collapse state (prevents desync)
 const rowIdOf = (row, fallback) =>
   String(
@@ -197,6 +207,16 @@ async function copyToClipboard(text) {
       return false;
     }
   }
+}
+
+// approval status from asset
+function getAssetApprovalStatus(asset) {
+  return asset?.assetStatus || "Pending";
+}
+
+// approval status from device serial
+function getDeviceApprovalStatus(serial) {
+  return serial?.deviceStatus || "Pending";
 }
 
 /* ======================= Small UI bits ======================= */
@@ -310,8 +330,9 @@ function CollapsibleSerialsRow({
   deviceTypes,
   brands,
   setSnack,
+  onDeviceDecision,
+  deviceDecisionLoadingKey,
 }) {
-  // If closed, render nothing (prevents stray space/content)
   if (!isOpen) return null;
 
   const startIndex = Math.max(
@@ -320,6 +341,13 @@ function CollapsibleSerialsRow({
   );
   const spacerColspan = Math.max(0, startIndex);
   const contentColspan = Math.max(1, COLUMNS.length - spacerColspan);
+
+  // use assetStatus as single source of truth
+  const assetApprovalStatus = getAssetApprovalStatus(row);
+  const assetApprovalStatusNorm = normalizeStatus(
+    assetApprovalStatus,
+    "pending"
+  );
 
   return (
     <TableRow sx={{ height: ROW_HEIGHT }}>
@@ -354,11 +382,10 @@ function CollapsibleSerialsRow({
               Device details ({serials.length})
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-              Device Type, Brand, Serial, Notes & Added On
+              Device Type, Brand, Serial, Notes, Added On &amp; Your Decision
             </Typography>
           </Box>
 
-          {/* Empty state inside subtable */}
           {serials.length === 0 ? (
             <Box sx={{ p: 2 }}>
               <Typography variant="body2" color="text.secondary">
@@ -397,7 +424,7 @@ function CollapsibleSerialsRow({
                     <TableCell>Serial</TableCell>
                     <TableCell>Notes</TableCell>
                     <TableCell>Added On</TableCell>
-                    <TableCell align="right">Actions</TableCell>
+                    <TableCell align="right">Your Decision</TableCell>
                   </TableRow>
                 </TableHead>
 
@@ -407,6 +434,33 @@ function CollapsibleSerialsRow({
                     const br = getBrandItem(s, brands);
                     const addedOn =
                       s.createdAt || row.createdAt || row.updatedAt;
+
+                    const deviceStatus = getDeviceApprovalStatus(s);
+                    const deviceStatusNorm = normalizeStatus(
+                      deviceStatus,
+                      "pending"
+                    );
+
+                    const canDecideDevice =
+                      deviceStatusNorm === "pending" &&
+                      assetApprovalStatusNorm === "pending";
+
+                    const chipColor =
+                      deviceStatusNorm === "accepted"
+                        ? "success"
+                        : deviceStatusNorm === "rejected"
+                        ? "error"
+                        : "default";
+
+                    const keyAccepted = `${row._id}:${s.serial}:Accepted`;
+                    const keyRejected = `${row._id}:${s.serial}:Rejected`;
+
+                    const tooltipDisabled =
+                      assetApprovalStatusNorm !== "pending"
+                        ? `Asset already ${assetApprovalStatus}. Waiting for admin.`
+                        : deviceStatusNorm !== "pending"
+                        ? `You already marked this device as ${deviceStatus}.`
+                        : "";
 
                     return (
                       <TableRow key={`${rowIdOf(row, idx)}-sn-${idx}`}>
@@ -508,23 +562,124 @@ function CollapsibleSerialsRow({
                           </Typography>
                         </TableCell>
 
-                        {/* Actions (copy only) */}
+                        {/* Your Decision + Actions */}
                         <TableCell align="right">
-                          <Tooltip title="Copy serial">
-                            <IconButton
+                          <Stack
+                            direction="row"
+                            spacing={0.5}
+                            justifyContent="flex-end"
+                            alignItems="center"
+                          >
+                            <Chip
                               size="small"
-                              onClick={async () => {
-                                if (await copyToClipboard(s.serial || "")) {
-                                  setSnack({
-                                    open: true,
-                                    msg: "Serial copied",
-                                  });
-                                }
-                              }}
-                            >
-                              <ContentCopy fontSize="inherit" />
-                            </IconButton>
-                          </Tooltip>
+                              label={deviceStatus}
+                              color={
+                                chipColor === "default" ? "default" : chipColor
+                              }
+                              variant={
+                                chipColor === "default" ? "outlined" : "filled"
+                              }
+                              sx={{ borderRadius: "20px", fontSize: 11 }}
+                            />
+
+                            <Tooltip title="Copy serial">
+                              <IconButton
+                                size="small"
+                                onClick={async () => {
+                                  if (await copyToClipboard(s.serial || "")) {
+                                    setSnack({
+                                      open: true,
+                                      msg: "Serial copied",
+                                    });
+                                  }
+                                }}
+                              >
+                                <ContentCopy fontSize="inherit" />
+                              </IconButton>
+                            </Tooltip>
+
+                            {onDeviceDecision && (
+                              <>
+                                <Tooltip
+                                  title={
+                                    canDecideDevice
+                                      ? "Accept this device"
+                                      : tooltipDisabled || "Action disabled"
+                                  }
+                                >
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      disabled={
+                                        !canDecideDevice ||
+                                        deviceDecisionLoadingKey === keyAccepted
+                                      }
+                                      onClick={() =>
+                                        onDeviceDecision(
+                                          row._id,
+                                          s.serial,
+                                          "Accepted",
+                                          deviceStatus
+                                        )
+                                      }
+                                      sx={{
+                                        color: canDecideDevice
+                                          ? "success.main"
+                                          : "action.disabled",
+                                        p: 0.5,
+                                      }}
+                                    >
+                                      {deviceDecisionLoadingKey ===
+                                      keyAccepted ? (
+                                        <CircularProgress size={16} />
+                                      ) : (
+                                        <CheckCircle fontSize="inherit" />
+                                      )}
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+
+                                <Tooltip
+                                  title={
+                                    canDecideDevice
+                                      ? "Reject this device"
+                                      : tooltipDisabled || "Action disabled"
+                                  }
+                                >
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      disabled={
+                                        !canDecideDevice ||
+                                        deviceDecisionLoadingKey === keyRejected
+                                      }
+                                      onClick={() =>
+                                        onDeviceDecision(
+                                          row._id,
+                                          s.serial,
+                                          "Rejected",
+                                          deviceStatus
+                                        )
+                                      }
+                                      sx={{
+                                        color: canDecideDevice
+                                          ? "error.main"
+                                          : "action.disabled",
+                                        p: 0.5,
+                                      }}
+                                    >
+                                      {deviceDecisionLoadingKey ===
+                                      keyRejected ? (
+                                        <CircularProgress size={16} />
+                                      ) : (
+                                        <Cancel fontSize="inherit" />
+                                      )}
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              </>
+                            )}
+                          </Stack>
                         </TableCell>
                       </TableRow>
                     );
@@ -564,25 +719,16 @@ export default function EmployeeTrackAssetsPage() {
 
   const [expanded, setExpanded] = useState(() => new Set());
 
-  // Drawer state
+  const [assetDecisionLoadingId, setAssetDecisionLoadingId] = useState(null);
+  const [deviceDecisionLoadingKey, setDeviceDecisionLoadingKey] =
+    useState(null);
+
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsAsset, setDetailsAsset] = useState(null);
   const openDetails = (row) => {
     setDetailsAsset(row);
     setDetailsOpen(true);
   };
-
-  useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    setCurrentUser(user);
-    fetchAssets();
-    fetchCatalog();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    setPage(0);
-  }, [activeTab, q, filterStatus, filterLocation, filterYear]);
 
   const fetchCatalog = async () => {
     try {
@@ -607,20 +753,21 @@ export default function EmployeeTrackAssetsPage() {
     }
   };
 
-  const fetchAssets = async () => {
+  // 🔄 Only show full-screen loader when explicitly requested
+  const fetchAssets = async ({ showFullScreenLoader = false } = {}) => {
     try {
-      setLoading(true);
+      if (showFullScreenLoader) {
+        setLoading(true);
+      }
       setErr(null);
 
       const token = localStorage.getItem("token");
       if (!token) {
-        setErr("Please login first");
-        return;
+        throw new Error("Please login first");
       }
 
       const user = JSON.parse(localStorage.getItem("user") || "{}");
 
-      // API should return assets owned by the employee
       const res = await axiosInstance.get("/api/assets", {
         headers: { Authorization: `Bearer ${token}` },
         params: {
@@ -634,11 +781,25 @@ export default function EmployeeTrackAssetsPage() {
       setPage(0);
     } catch (e) {
       console.error(e);
-      setErr("Failed to load assets. Please try again.");
+      setErr(e.message || "Failed to load assets. Please try again.");
     } finally {
-      setLoading(false);
+      if (showFullScreenLoader) {
+        setLoading(false);
+      }
     }
   };
+
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    setCurrentUser(user);
+    fetchAssets({ showFullScreenLoader: true });
+    fetchCatalog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    setPage(0);
+  }, [activeTab, q, filterStatus, filterLocation, filterYear]);
 
   const toggleExpand = (row) => {
     const id = rowIdOf(row, 0);
@@ -649,12 +810,260 @@ export default function EmployeeTrackAssetsPage() {
     });
   };
 
-  // filtering
+  const buildUserPayload = () => {
+    if (!currentUser) return null;
+    return {
+      _id: currentUser._id || currentUser.id || currentUser.userId,
+      id: currentUser._id || currentUser.id || currentUser.userId,
+      role: currentUser.role,
+      name: currentUser.name,
+      email: currentUser.email,
+      employeeCode: currentUser.employeeCode,
+    };
+  };
+
+  /* ---------- Employee asset-level Accept / Reject ---------- */
+  const handleEmployeeAssetDecision = async (
+    assetId,
+    decision,
+    currentAssetStatus
+  ) => {
+    const statusNorm = normalizeStatus(currentAssetStatus, "pending");
+    if (statusNorm !== "pending") {
+      setSnack({
+        open: true,
+        msg: `You have already marked this asset as ${currentAssetStatus}.`,
+      });
+      return;
+    }
+
+    try {
+      const userPayload = buildUserPayload();
+      if (!userPayload) {
+        setSnack({
+          open: true,
+          msg: "User information missing. Please login again.",
+        });
+        return;
+      }
+
+      const token = localStorage.getItem("token");
+      const key = `${assetId}:${decision}`;
+      setAssetDecisionLoadingId(key);
+
+      // Employee asset decision (backend will update deviceStatus for Pending devices and recompute assetStatus)
+      const res = await axiosInstance.patch(
+        `/api/assets/${assetId}/employee-status`,
+        {
+          decision,
+          user: userPayload,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      const updatedAsset = res.data?.asset;
+
+      if (updatedAsset) {
+        setAssets((prev) =>
+          prev.map((a) => (a._id === updatedAsset._id ? updatedAsset : a))
+        );
+      } else {
+        // Fallback: update locally if backend didn't send asset
+        setAssets((prev) =>
+          prev.map((a) => {
+            if (a._id !== assetId) return a;
+
+            const serials = Array.isArray(a.serialNumbers)
+              ? a.serialNumbers
+              : [];
+
+            const updatedSerials =
+              decision === "Accepted"
+                ? serials.map((sn) => {
+                    const st = getDeviceApprovalStatus(sn);
+                    if (normalizeStatus(st, "pending") !== "pending") {
+                      return sn;
+                    }
+                    return {
+                      ...sn,
+                      deviceStatus: "Accepted",
+                    };
+                  })
+                : serials;
+
+            return {
+              ...a,
+              assetStatus: decision,
+              serialNumbers: updatedSerials,
+            };
+          })
+        );
+      }
+
+      setSnack({
+        open: true,
+        msg: `You have ${
+          decision === "Accepted" ? "accepted" : "rejected"
+        } this asset.`,
+      });
+    } catch (e) {
+      console.error("handleEmployeeAssetDecision error", e);
+      const serverMsg =
+        e?.response?.data?.message ||
+        e?.response?.data?.error ||
+        e?.message ||
+        "";
+
+      setSnack({
+        open: true,
+        msg:
+          serverMsg && typeof serverMsg === "string"
+            ? serverMsg
+            : "Failed to submit your decision for this asset.",
+      });
+    } finally {
+      setAssetDecisionLoadingId(null);
+    }
+  };
+
+  /* ---------- Employee device-level Accept / Reject ---------- */
+  const handleEmployeeDeviceDecision = async (
+    assetId,
+    serialId,
+    decision,
+    currentDeviceStatus
+  ) => {
+    const statusNorm = normalizeStatus(currentDeviceStatus, "pending");
+    if (statusNorm !== "pending") {
+      setSnack({
+        open: true,
+        msg: `You have already marked this device as ${currentDeviceStatus}.`,
+      });
+      return;
+    }
+
+    try {
+      const userPayload = buildUserPayload();
+      if (!userPayload) {
+        setSnack({
+          open: true,
+          msg: "User information missing. Please login again.",
+        });
+        return;
+      }
+
+      const token = localStorage.getItem("token");
+      const key = `${assetId}:${serialId}:${decision}`;
+      setDeviceDecisionLoadingKey(key);
+
+      // Employee decision on this device (backend recomputes assetStatus)
+      const res = await axiosInstance.patch(
+        `/api/assets/${assetId}/serials/${encodeURIComponent(
+          serialId
+        )}/employee-status`,
+        {
+          decision,
+          user: userPayload,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      const updatedAssetFromApi = res.data?.asset;
+
+      if (updatedAssetFromApi) {
+        setAssets((prev) =>
+          prev.map((a) =>
+            a._id === updatedAssetFromApi._id ? updatedAssetFromApi : a
+          )
+        );
+      } else {
+        // Fallback: local update if backend didn't return asset
+        setAssets((prev) =>
+          prev.map((a) => {
+            if (a._id !== assetId) return a;
+
+            const serials = Array.isArray(a.serialNumbers)
+              ? a.serialNumbers
+              : [];
+
+            const updatedSerials = serials.map((sn) => {
+              if (sn.serial !== serialId) return sn;
+              return {
+                ...sn,
+                deviceStatus: decision,
+              };
+            });
+
+            return {
+              ...a,
+              serialNumbers: updatedSerials,
+            };
+          })
+        );
+      }
+
+      setSnack({
+        open: true,
+        msg:
+          decision === "Accepted"
+            ? "You have accepted this device."
+            : "You have rejected this device.",
+      });
+    } catch (e) {
+      console.error("handleEmployeeDeviceDecision error", e);
+
+      const serverMsg =
+        e?.response?.data?.message ||
+        e?.response?.data?.error ||
+        e?.message ||
+        "";
+
+      setSnack({
+        open: true,
+        msg:
+          serverMsg && typeof serverMsg === "string"
+            ? serverMsg
+            : "Failed to submit your decision for this device.",
+      });
+    } finally {
+      setDeviceDecisionLoadingKey(null);
+    }
+  };
+
+  // filtering (including employee-level Pending / Rejected tabs)
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
+
     return assets
       .filter((a) => {
-        if (activeTab !== "all" && a.status !== activeTab) return false;
+        const serials = Array.isArray(a.serialNumbers) ? a.serialNumbers : [];
+
+        const assetApprovalStatus = getAssetApprovalStatus(a);
+        const assetApprovalStatusNorm = normalizeStatus(
+          assetApprovalStatus,
+          "pending"
+        );
+
+        const deviceStatuses = serials.map((s) => getDeviceApprovalStatus(s));
+        const hasPendingDevice = deviceStatuses.some(
+          (st) => normalizeStatus(st) === "pending"
+        );
+        const hasRejectedDevice = deviceStatuses.some(
+          (st) => normalizeStatus(st) === "rejected"
+        );
+
+        if (activeTab === "Pending") {
+          if (!(assetApprovalStatusNorm === "pending" || hasPendingDevice)) {
+            return false;
+          }
+        } else if (activeTab === "Rejected") {
+          if (!(assetApprovalStatusNorm === "rejected" || hasRejectedDevice)) {
+            return false;
+          }
+        } else if (activeTab !== "all" && a.status !== activeTab) {
+          // lifecycle tab
+          return false;
+        }
 
         if (filterStatus && a.status !== filterStatus) return false;
 
@@ -694,12 +1103,10 @@ export default function EmployeeTrackAssetsPage() {
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   }, [assets, activeTab, q, filterStatus, filterLocation, filterYear]);
 
-  // pagination
   const start = page * rowsPerPage;
   const end = start + rowsPerPage;
   const pageItems = filtered.slice(start, end);
 
-  // summary tiles
   const totals = useMemo(() => {
     const totalValue = assets.reduce(
       (acc, a) => acc + (Number(a.value) || 0),
@@ -746,11 +1153,20 @@ export default function EmployeeTrackAssetsPage() {
   if (err) {
     return (
       <Box sx={{ minHeight: "100vh", backgroundColor: "#fafbfc", p: 2 }}>
-        <Alert severity="error" sx={{ maxWidth: 600, mx: "auto", mt: 4 }}>
+        <Alert
+          severity="error"
+          sx={{ maxWidth: 600, mx: "auto", mt: 4 }}
+          action={
+            <Button
+              onClick={() => fetchAssets({ showFullScreenLoader: true })}
+              color="inherit"
+              size="small"
+            >
+              Retry
+            </Button>
+          }
+        >
           {err}
-          <Button onClick={fetchAssets} sx={{ ml: 2 }}>
-            Retry
-          </Button>
         </Alert>
       </Box>
     );
@@ -795,7 +1211,7 @@ export default function EmployeeTrackAssetsPage() {
                   variant="body2"
                   sx={{ color: "text.secondary", mt: 0.5 }}
                 >
-                  View the assets assigned to you
+                  View and acknowledge the assets assigned to you
                 </Typography>
               </Box>
             </Box>
@@ -1076,6 +1492,17 @@ export default function EmployeeTrackAssetsPage() {
                         : [];
                       const st = chipForStatus(row.status);
 
+                      const assetApprovalStatus = getAssetApprovalStatus(row);
+                      const assetApprovalStatusNorm = normalizeStatus(
+                        assetApprovalStatus,
+                        "pending"
+                      );
+                      const canDecideAsset =
+                        assetApprovalStatusNorm === "pending";
+
+                      const assetKeyAccepted = `${row._id}:Accepted`;
+                      const assetKeyRejected = `${row._id}:Rejected`;
+
                       return (
                         <React.Fragment key={rowId}>
                           <TableRow hover sx={{ height: ROW_HEIGHT }}>
@@ -1222,7 +1649,7 @@ export default function EmployeeTrackAssetsPage() {
                               </Typography>
                             </TableCell>
 
-                            {/* status */}
+                            {/* lifecycle status */}
                             <TableCell>
                               <Chip
                                 size="small"
@@ -1250,9 +1677,114 @@ export default function EmployeeTrackAssetsPage() {
                                 </Typography>
                               </Tooltip>
                             </TableCell>
+
+                            {/* actions: your asset decision */}
+                            <TableCell align="right">
+                              <Stack
+                                direction="row"
+                                spacing={0.5}
+                                justifyContent="flex-end"
+                                alignItems="center"
+                              >
+                                <Chip
+                                  size="small"
+                                  label={`Status: ${assetApprovalStatus}`}
+                                  color={
+                                    assetApprovalStatusNorm === "accepted"
+                                      ? "success"
+                                      : assetApprovalStatusNorm === "rejected"
+                                      ? "error"
+                                      : "default"
+                                  }
+                                  variant={
+                                    assetApprovalStatusNorm === "pending"
+                                      ? "outlined"
+                                      : "filled"
+                                  }
+                                  sx={{ borderRadius: "20px", fontSize: 11 }}
+                                />
+
+                                <Tooltip
+                                  title={
+                                    canDecideAsset
+                                      ? "Accept this asset"
+                                      : "You already responded. Admin must request again if changes are needed."
+                                  }
+                                >
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      disabled={
+                                        !canDecideAsset ||
+                                        assetDecisionLoadingId ===
+                                          assetKeyAccepted
+                                      }
+                                      onClick={() =>
+                                        handleEmployeeAssetDecision(
+                                          row._id,
+                                          "Accepted",
+                                          assetApprovalStatus
+                                        )
+                                      }
+                                      sx={{
+                                        color: canDecideAsset
+                                          ? "success.main"
+                                          : "action.disabled",
+                                        p: 0.5,
+                                      }}
+                                    >
+                                      {assetDecisionLoadingId ===
+                                      assetKeyAccepted ? (
+                                        <CircularProgress size={16} />
+                                      ) : (
+                                        <CheckCircle fontSize="inherit" />
+                                      )}
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+
+                                <Tooltip
+                                  title={
+                                    canDecideAsset
+                                      ? "Reject this asset"
+                                      : "You already responded. Admin must request again if changes are needed."
+                                  }
+                                >
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      disabled={
+                                        !canDecideAsset ||
+                                        assetDecisionLoadingId ===
+                                          assetKeyRejected
+                                      }
+                                      onClick={() =>
+                                        handleEmployeeAssetDecision(
+                                          row._id,
+                                          "Rejected",
+                                          assetApprovalStatus
+                                        )
+                                      }
+                                      sx={{
+                                        color: canDecideAsset
+                                          ? "error.main"
+                                          : "action.disabled",
+                                        p: 0.5,
+                                      }}
+                                    >
+                                      {assetDecisionLoadingId ===
+                                      assetKeyRejected ? (
+                                        <CircularProgress size={16} />
+                                      ) : (
+                                        <Cancel fontSize="inherit" />
+                                      )}
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              </Stack>
+                            </TableCell>
                           </TableRow>
 
-                          {/* Collapsible row — rendered only when open */}
                           <CollapsibleSerialsRow
                             row={row}
                             serials={serials}
@@ -1263,6 +1795,8 @@ export default function EmployeeTrackAssetsPage() {
                             deviceTypes={deviceTypes}
                             brands={brands}
                             setSnack={setSnack}
+                            onDeviceDecision={handleEmployeeDeviceDecision}
+                            deviceDecisionLoadingKey={deviceDecisionLoadingKey}
                           />
                         </React.Fragment>
                       );
@@ -1273,7 +1807,6 @@ export default function EmployeeTrackAssetsPage() {
             </Table>
           </TableContainer>
 
-          {/* Pagination */}
           <TablePagination
             component="div"
             count={filtered.length}
@@ -1294,7 +1827,6 @@ export default function EmployeeTrackAssetsPage() {
         baseAsset={detailsAsset}
         deviceTypes={deviceTypes}
         brands={brands}
-        // Do not pass onEdit/onDelete for employee (hidden automatically in drawer)
       />
 
       <Snackbar

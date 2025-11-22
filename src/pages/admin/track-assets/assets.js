@@ -12,6 +12,7 @@ import {
   Delete,
   Edit,
   Home,
+  HourglassTop,
   Info,
   Inventory2,
   KeyboardArrowDown,
@@ -45,6 +46,7 @@ import {
   IconButton,
   InputAdornment,
   InputLabel,
+  LinearProgress,
   MenuItem,
   Paper,
   Select,
@@ -97,6 +99,16 @@ const STATUS_TABS = [
   { value: "Retired", label: "Retired", icon: <ReceiptLong /> },
   { value: "Lost", label: "Lost", icon: <Cancel /> },
   { value: "Sold", label: "Sold", icon: <ReceiptLong /> },
+  {
+    value: "approvalPending",
+    label: "Pending Assets",
+    icon: <HourglassTop />,
+  },
+  {
+    value: "approvalRejected",
+    label: "Rejected Assets",
+    icon: <Cancel />,
+  },
 ];
 
 const STATUS_OPTIONS = ["Active", "In Maintenance", "Retired", "Lost", "Sold"];
@@ -104,16 +116,16 @@ const STATUS_OPTIONS = ["Active", "In Maintenance", "Retired", "Lost", "Sold"];
 /** % widths (sum to 100) so table fills the entire row */
 const COLUMNS = [
   { id: "select", label: "", width: 3 },
-  { id: "asset", label: "Asset", width: 18 },
-  { id: "type", label: "Type", width: 8 },
+  { id: "asset", label: "Asset", width: 14 },
+  { id: "type", label: "Type", width: 5 },
   { id: "serials", label: "Device Serials", width: 11 },
-  { id: "location", label: "Location", width: 10 },
+  { id: "location", label: "Location", width: 6 },
   { id: "purchase", label: "Purchase", width: 9 },
   { id: "value", label: "Value", width: 7 },
-  { id: "status", label: "Status", width: 8 },
+  { id: "status", label: "Status", width: 12 },
   { id: "assigned", label: "Assigned To", width: 8 },
-  { id: "tags", label: "Tags", width: 9 }, // adjusted
-  { id: "actions", label: "Actions", width: 9 }, // wider so buttons fit
+  { id: "tags", label: "Tags", width: 9 },
+  { id: "actions", label: "Actions", width: 14 },
 ];
 
 /* ======================= Small helpers ======================= */
@@ -137,6 +149,22 @@ async function copyToClipboard(text) {
       return false;
     }
   }
+}
+
+/**
+ * Extract a user-friendly API error message from axios error
+ */
+function getApiErrorMessage(error, fallback = "Something went wrong") {
+  if (!error) return fallback;
+  const resp = error.response;
+  if (resp && resp.data) {
+    const data = resp.data;
+    if (typeof data === "string") return data;
+    if (typeof data.error === "string") return data.error;
+    if (typeof data.message === "string") return data.message;
+  }
+  if (typeof error.message === "string") return error.message;
+  return fallback;
 }
 
 function IconBadge({
@@ -633,7 +661,10 @@ export default function AdminTrackAssetsPage() {
 
   const [currentUser, setCurrentUser] = useState(null);
   const [assets, setAssets] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // loading states
+  const [initialLoading, setInitialLoading] = useState(true); // first load
+  const [refreshing, setRefreshing] = useState(false); // subsequent refetches
+
   const [err, setErr] = useState(null);
 
   const [deviceTypes, setDeviceTypes] = useState([]);
@@ -665,11 +696,21 @@ export default function AdminTrackAssetsPage() {
     name: "",
     type: "",
     description: "",
-    serialNumbers: [{ deviceType: "", serial: "", brand: "" }],
+    serialNumbers: [
+      {
+        _id: null,
+        deviceType: "",
+        serial: "",
+        brand: "",
+        notes: "",
+        deviceStatus: "Pending",
+      },
+    ],
     purchaseDate: "",
     location: "",
     value: "",
     status: "Active",
+    assetStatus: "Pending",
     assignedTo: "",
     tags: "",
   };
@@ -678,6 +719,27 @@ export default function AdminTrackAssetsPage() {
 
   const [saving, setSaving] = useState(false);
   const isEdit = !!form._id;
+
+  // Approval loading states
+  const [assetApprovalLoadingId, setAssetApprovalLoadingId] = useState(null);
+  const [deviceApprovalLoadingKey, setDeviceApprovalLoadingKey] =
+    useState(null);
+
+  const isPrivileged = useMemo(() => {
+    if (!currentUser) return false;
+    const r = String(currentUser.role || "")
+      .trim()
+      .toLowerCase();
+    return ["admin", "manager", "hr", "finance"].includes(r);
+  }, [currentUser]);
+
+  const isEmployee = useMemo(() => {
+    if (!currentUser) return false;
+    const r = String(currentUser.role || "")
+      .trim()
+      .toLowerCase();
+    return r === "employee";
+  }, [currentUser]);
 
   // Details Drawer
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -711,7 +773,7 @@ export default function AdminTrackAssetsPage() {
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     setCurrentUser(user);
-    fetchAssets();
+    fetchAssets({ initial: true });
     fetchCatalog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -736,11 +798,10 @@ export default function AdminTrackAssetsPage() {
         setDeviceTypes(normalizeCatalog(deviceRows));
       } else {
         setDeviceTypes([]);
-        const code = dtRes.reason?.response?.status;
-        const msg =
-          code === 404
-            ? "Device types endpoint (/api/devices) not found."
-            : "Failed to load device types.";
+        const msg = getApiErrorMessage(
+          dtRes.reason,
+          "Failed to load device types."
+        );
         setCatalogBanner((prev) => (prev ? prev + " " + msg : msg));
       }
 
@@ -749,30 +810,34 @@ export default function AdminTrackAssetsPage() {
         setBrands(normalizeCatalog(brandRows));
       } else {
         setBrands([]);
-        const code = brRes.reason?.response?.status;
-        const msg =
-          code === 404
-            ? "Brands endpoint (/api/brands) not found."
-            : "Failed to load brands.";
+        const msg = getApiErrorMessage(brRes.reason, "Failed to load brands.");
         setCatalogBanner((prev) => (prev ? prev + " " + msg : msg));
       }
     } catch (e) {
       setDeviceTypes([]);
       setBrands([]);
-      setCatalogBanner("Failed to load catalog.");
+      const msg = getApiErrorMessage(e, "Failed to load catalog.");
+      setCatalogBanner(msg);
       console.error("Catalog error:", e);
     }
   };
 
   // --------- Assets ----------
-  const fetchAssets = async () => {
+  const fetchAssets = async ({ initial = false } = {}) => {
     try {
-      setLoading(true);
-      setErr(null);
+      if (initial) {
+        setInitialLoading(true);
+      } else {
+        setRefreshing(true);
+      }
+
+      // setErr(null);
 
       const token = localStorage.getItem("token");
       if (!token) {
-        setErr("Please login first");
+        const msg = "Please login first";
+        // setErr(msg);
+        setSnack({ open: true, msg });
         return;
       }
 
@@ -792,9 +857,18 @@ export default function AdminTrackAssetsPage() {
       setPage(0);
     } catch (e) {
       console.error(e);
-      setErr("Failed to load assets. Please try again.");
+      const msg = getApiErrorMessage(
+        e,
+        "Failed to load assets. Please try again."
+      );
+      // setErr(msg);
+      setSnack({ open: true, msg });
     } finally {
-      setLoading(false);
+      if (initial) {
+        setInitialLoading(false);
+      } else {
+        setRefreshing(false);
+      }
     }
   };
 
@@ -804,6 +878,14 @@ export default function AdminTrackAssetsPage() {
   };
 
   const openEdit = (row) => {
+    if (isEmployee) {
+      setSnack({
+        open: true,
+        msg: "Employees are not allowed to edit assets.",
+      });
+      return;
+    }
+
     setForm({
       _id: row._id,
       name: row.name || "",
@@ -811,17 +893,29 @@ export default function AdminTrackAssetsPage() {
       description: row.description || "",
       serialNumbers: Array.isArray(row.serialNumbers)
         ? row.serialNumbers.map((s) => ({
+            _id: s._id || null,
             deviceType:
               (s.deviceType && s.deviceType._id) || s.deviceType || "",
             brand: (s.brand && s.brand._id) || s.brand || "",
             serial: s.serial || "",
             notes: s.notes || "",
+            deviceStatus: s.deviceStatus || "Pending",
           }))
-        : [{ deviceType: "", serial: "", brand: "" }],
+        : [
+            {
+              _id: null,
+              deviceType: "",
+              serial: "",
+              brand: "",
+              notes: "",
+              deviceStatus: "Pending",
+            },
+          ],
       purchaseDate: yyyyMmDd(row.purchaseDate) || "",
       location: row.location || "",
       value: String(row.value ?? ""),
       status: row.status || "Active",
+      assetStatus: row.assetStatus || "Pending",
       assignedTo: row.assignedTo || "",
       tags: Array.isArray(row.tags) ? row.tags.join(", ") : row.tags || "",
     });
@@ -832,16 +926,70 @@ export default function AdminTrackAssetsPage() {
     try {
       setSaving(true);
       const token = localStorage.getItem("token");
-      const payload = {
-        name: form.name,
-        type: form.type,
-        description: form.description,
-        serialNumbers: (form.serialNumbers || []).map((s) => ({
+
+      const originalAsset = isEdit
+        ? assets.find((a) => a._id === form._id)
+        : null;
+
+      const originalSerialStatusMap = new Map();
+      if (originalAsset && Array.isArray(originalAsset.serialNumbers)) {
+        originalAsset.serialNumbers.forEach((s) => {
+          if (s && s._id) {
+            originalSerialStatusMap.set(
+              String(s._id),
+              String(s.deviceStatus || "Pending")
+            );
+          }
+        });
+      }
+
+      const serialNumbersPayload = (form.serialNumbers || []).map((s) => {
+        const serialId = s._id ? String(s._id) : null;
+        let deviceStatus =
+          originalSerialStatusMap.get(serialId) || s.deviceStatus || "Pending";
+
+        if (deviceStatus === "Accepted" || deviceStatus === "Rejected") {
+          deviceStatus = "Pending";
+        }
+
+        return {
+          _id: serialId || undefined,
           deviceType: s.deviceType || undefined,
           brand: s.brand || undefined,
           serial: s.serial ? String(s.serial).trim() : "",
           notes: s.notes ? String(s.notes).trim() : undefined,
-        })),
+          deviceStatus,
+        };
+      });
+
+      let assetStatusToSend =
+        (originalAsset && originalAsset.assetStatus) ||
+        form.assetStatus ||
+        "Pending";
+
+      const originalAssetFinal =
+        assetStatusToSend === "Accepted" || assetStatusToSend === "Rejected";
+
+      let anyOriginalDeviceFinal = false;
+      if (originalAsset && Array.isArray(originalAsset.serialNumbers)) {
+        anyOriginalDeviceFinal = originalAsset.serialNumbers.some((s) =>
+          ["Accepted", "Rejected"].includes(String(s.deviceStatus || "Pending"))
+        );
+      }
+
+      if (isEdit && (originalAssetFinal || anyOriginalDeviceFinal)) {
+        assetStatusToSend = "Pending";
+      }
+
+      if (serialNumbersPayload.some((s) => s.deviceStatus === "Pending")) {
+        assetStatusToSend = "Pending";
+      }
+
+      const payload = {
+        name: form.name,
+        type: form.type,
+        description: form.description,
+        serialNumbers: serialNumbersPayload,
         purchaseDate: form.purchaseDate || null,
         location: form.location,
         value: form.value ? Number(form.value) : 0,
@@ -853,13 +1001,14 @@ export default function AdminTrackAssetsPage() {
               .map((t) => t.trim())
               .filter(Boolean)
           : [],
+        assetStatus: assetStatusToSend,
       };
 
       if (isEdit) {
         await axiosInstance.put(`/api/assets/${form._id}`, payload, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        setSnack({ open: true, msg: "Asset updated" });
+        setSnack({ open: true, msg: "Asset updated (status reset if needed)" });
       } else {
         await axiosInstance.post(`/api/assets`, payload, {
           headers: { Authorization: `Bearer ${token}` },
@@ -869,16 +1018,28 @@ export default function AdminTrackAssetsPage() {
 
       setFormOpen(false);
       setForm(freshForm);
-      fetchAssets();
+      fetchAssets(); // background refresh, no full-page reload
     } catch (e) {
       console.error(e);
-      setErr("Failed to save asset. Please check details and retry.");
+      const msg = getApiErrorMessage(
+        e,
+        "Failed to save asset. Please check details and retry."
+      );
+      setSnack({ open: true, msg });
     } finally {
       setSaving(false);
     }
   };
 
   const onDelete = async (row) => {
+    if (isEmployee) {
+      setSnack({
+        open: true,
+        msg: "Employees are not allowed to delete assets.",
+      });
+      return;
+    }
+
     if (!confirm(`Soft delete asset "${row.name}"?`)) return;
     try {
       const token = localStorage.getItem("token");
@@ -886,10 +1047,150 @@ export default function AdminTrackAssetsPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       setSnack({ open: true, msg: "Asset deleted" });
-      fetchAssets();
+      fetchAssets(); // background refresh only
     } catch (e) {
       console.error(e);
-      setErr("Failed to delete asset.");
+      const msg = getApiErrorMessage(e, "Failed to delete asset.");
+      setSnack({ open: true, msg });
+    }
+  };
+
+  // --------- Approval handlers ----------
+
+  const handleAssetDecision = async (assetId, decision) => {
+    try {
+      if (!isPrivileged) {
+        setSnack({
+          open: true,
+          msg: "Not allowed: insufficient role to change asset status.",
+        });
+        return;
+      }
+
+      const userPayload = buildUserPayload();
+      if (!userPayload) {
+        setSnack({
+          open: true,
+          msg: "User information missing. Please login again.",
+        });
+        return;
+      }
+
+      setAssetApprovalLoadingId(assetId + ":" + decision);
+      const token = localStorage.getItem("token");
+
+      await axiosInstance.patch(
+        `/api/assets/${assetId}/status`,
+        {
+          decision,
+          user: userPayload,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      setSnack({
+        open: true,
+        msg: `Asset ${
+          decision === "Accepted" ? "approved" : "rejected"
+        } successfully`,
+      });
+      fetchAssets(); // no reload
+    } catch (e) {
+      console.error("handleAssetDecision error", e);
+      const msg = getApiErrorMessage(
+        e,
+        "Failed to update asset approval status."
+      );
+      setSnack({ open: true, msg });
+    } finally {
+      setAssetApprovalLoadingId(null);
+    }
+  };
+
+  const buildUserPayload = () => {
+    if (!currentUser) return null;
+
+    return {
+      _id: currentUser._id || currentUser.id || currentUser.userId,
+      id: currentUser._id || currentUser.id || currentUser.userId,
+      role: currentUser.role,
+      name: currentUser.name,
+      email: currentUser.email,
+      employeeCode: currentUser.employeeCode,
+    };
+  };
+
+  const handleDeviceDecision = async (
+    assetId,
+    serialId,
+    decision,
+    devStatus,
+    assetApproval
+  ) => {
+    try {
+      if (!isPrivileged) {
+        setSnack({
+          open: true,
+          msg: "Not allowed: insufficient role to change device status.",
+        });
+        return;
+      }
+
+      const userPayload = buildUserPayload();
+      if (!userPayload) {
+        setSnack({
+          open: true,
+          msg: "User information missing. Please login again.",
+        });
+        return;
+      }
+
+      if (assetApproval === "Accepted" || assetApproval === "Rejected") {
+        const msg = `Asset already ${assetApproval}. Device actions are disabled.`;
+        setSnack({ open: true, msg });
+        return;
+      }
+
+      if (devStatus !== "Pending") {
+        const msg = `Device already ${devStatus}. Only Pending devices can be updated.`;
+        setSnack({ open: true, msg });
+        return;
+      }
+
+      const key = `${assetId}:${serialId}:${decision}`;
+      setDeviceApprovalLoadingKey(key);
+
+      const token = localStorage.getItem("token");
+
+      await axiosInstance.patch(
+        `/api/assets/${assetId}/serials/${serialId}/status`,
+        {
+          decision,
+          user: userPayload,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      setSnack({
+        open: true,
+        msg: `Device ${
+          decision === "Accepted" ? "approved" : "rejected"
+        } successfully`,
+      });
+      fetchAssets(); // no reload
+    } catch (e) {
+      console.error("handleDeviceDecision error", e);
+      const msg = getApiErrorMessage(
+        e,
+        "Failed to update device approval status."
+      );
+      setSnack({ open: true, msg });
+    } finally {
+      setDeviceApprovalLoadingKey(null);
     }
   };
 
@@ -898,8 +1199,22 @@ export default function AdminTrackAssetsPage() {
     const needle = q.trim().toLowerCase();
     return assets
       .filter((a) => {
+        const assetApproval = String(a.assetStatus || "Pending");
+        const serials = Array.isArray(a.serialNumbers) ? a.serialNumbers : [];
+        const hasPendingDevice = serials.some(
+          (s) => String(s.deviceStatus || "Pending") === "Pending"
+        );
+        const hasRejectedDevice = serials.some(
+          (s) => String(s.deviceStatus || "Pending") === "Rejected"
+        );
+
         if (activeTab === "me") {
           if (!isMine(a)) return false;
+        } else if (activeTab === "approvalPending") {
+          if (!(assetApproval === "Pending" || hasPendingDevice)) return false;
+        } else if (activeTab === "approvalRejected") {
+          if (!(assetApproval === "Rejected" || hasRejectedDevice))
+            return false;
         } else if (activeTab !== "all" && a.status !== activeTab) {
           return false;
         }
@@ -954,9 +1269,6 @@ export default function AdminTrackAssetsPage() {
   const start = page * rowsPerPage;
   const end = start + rowsPerPage;
   const pageItems = filtered.slice(start, end);
-
-  // For stable table height: number of filler rows
-  // const emptyRows = Math.max(0, rowsPerPage - pageItems.length);
 
   // Totals for cards
   const totals = useMemo(() => {
@@ -1023,7 +1335,8 @@ export default function AdminTrackAssetsPage() {
       fetchAssets();
     } catch (e) {
       console.error(e);
-      setErr("One or more deletes failed.");
+      const msg = getApiErrorMessage(e, "One or more deletes failed.");
+      setSnack({ open: true, msg });
     }
   };
 
@@ -1047,7 +1360,8 @@ export default function AdminTrackAssetsPage() {
       fetchAssets();
     } catch (e) {
       console.error(e);
-      setErr("One or more updates failed.");
+      const msg = getApiErrorMessage(e, "One or more updates failed.");
+      setSnack({ open: true, msg });
     }
   };
 
@@ -1055,16 +1369,14 @@ export default function AdminTrackAssetsPage() {
     const list = filtered || assets || [];
     if (!list.length) return;
 
-    // --- helpers ----------------------------------------------------
     const sanitize = (v) => {
-      // Excel-safe: no NBSP, no fancy dashes/quotes; default to empty string
       if (v === undefined || v === null) return "";
       let s = String(v);
       s = s
-        .replace(/\u00A0/g, " ") // NBSP -> space
-        .replace(/\u2013|\u2014/g, "-") // en/em dash -> ASCII hyphen
-        .replace(/\u2018|\u2019/g, "'") // curly single quotes -> '
-        .replace(/\u201C|\u201D/g, '"'); // curly double quotes -> "
+        .replace(/\u00A0/g, " ")
+        .replace(/\u2013|\u2014/g, "-")
+        .replace(/\u2018|\u2019/g, "'")
+        .replace(/\u201C|\u201D/g, '"');
       return s.trim();
     };
 
@@ -1079,37 +1391,53 @@ export default function AdminTrackAssetsPage() {
       "Location",
       "PurchaseDate",
       "Value",
-      "Status",
+      "Status", // array of { status, approvalStatus }
       "AssignedTo",
       "Tags",
-      "Device Serials", // JSON array of objects (ASCII-only content)
+      "Device Serials",
       "CreatedAt",
       "UpdatedAt",
     ];
 
-    // Build rows
     const rows = list.map((a) => {
       const serials = Array.isArray(a.serialNumbers) ? a.serialNumbers : [];
 
       const deviceSerials = serials.map((s) => {
+        // 👇 use the SAME helpers + arrays as your Device Details table
+        const dtItem = getDeviceTypeItem(s, deviceTypes || []);
+        const brItem = getBrandItem(s, brands || []);
+
         const deviceTypeName =
-          typeof s?.deviceType === "object"
-            ? s.deviceType?.name || ""
-            : s?.deviceTypeName || "";
+          (dtItem && dtItem.name) ||
+          s.deviceTypeName ||
+          (typeof s.deviceType === "string" ? s.deviceType : "") ||
+          "";
+
         const brandName =
-          typeof s?.brand === "object"
-            ? s.brand?.name || ""
-            : s?.brandName || "";
+          (brItem &&
+            (brItem.name || brItem.label || brItem.text || brItem.title)) ||
+          s.brandName ||
+          (typeof s.brand === "string" ? s.brand : "") ||
+          "";
 
         const addedDate = s?.createdAt || s?.addedAt || a?.createdAt || "";
+
         return {
           "Device Type": sanitize(deviceTypeName),
           Brand: sanitize(brandName),
           Serial: sanitize(s?.serial || ""),
-          Notes: sanitize(s?.notes || ""), // <-- no em-dash; empty string instead
+          Notes: sanitize(s?.notes || ""),
           Added: sanitize(fmtHumanDate(addedDate)),
         };
       });
+
+      // Status as array of { status, approvalStatus }
+      const statusArray = [
+        {
+          status: sanitize(a.status ?? ""),
+          approvalStatus: sanitize(a.assetStatus ?? ""),
+        },
+      ];
 
       return {
         Id: sanitize(a._id),
@@ -1119,20 +1447,18 @@ export default function AdminTrackAssetsPage() {
         Location: sanitize(a.location),
         PurchaseDate: sanitize(fmtIso(a.purchaseDate)),
         Value: a.value ?? "",
-        Status: sanitize(a.status),
+        Status: sanitize(JSON.stringify(statusArray)),
         AssignedTo: sanitize(a.assignedTo),
         Tags: sanitize(Array.isArray(a.tags) ? a.tags.join("|") : a.tags || ""),
-        "Device Serials": sanitize(JSON.stringify(deviceSerials)), // JSON text sanitized to ASCII
+        "Device Serials": sanitize(JSON.stringify(deviceSerials)),
         CreatedAt: sanitize(fmtIso(a.createdAt)),
         UpdatedAt: sanitize(fmtIso(a.updatedAt)),
       };
     });
 
-    // CSV escaping
     const esc = (v) => {
       const s = String(v ?? "");
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-      // Excel will respect BOM + quotes
     };
 
     const csv = [
@@ -1140,7 +1466,6 @@ export default function AdminTrackAssetsPage() {
       ...rows.map((r) => headers.map((h) => esc(r[h])).join(",")),
     ].join("\n");
 
-    // --- IMPORTANT: add UTF-8 BOM so Excel parses correctly -----------
     const blob = new Blob(["\uFEFF" + csv], {
       type: "text/csv;charset=utf-8;",
     });
@@ -1168,7 +1493,7 @@ export default function AdminTrackAssetsPage() {
     setPage(0);
   };
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <Box
         sx={{
@@ -1189,7 +1514,7 @@ export default function AdminTrackAssetsPage() {
       <Box sx={{ minHeight: "100vh", backgroundColor: "#fafbfc", p: 2 }}>
         <Alert severity="error" sx={{ maxWidth: 600, mx: "auto", mt: 4 }}>
           {err}
-          <Button onClick={fetchAssets} sx={{ ml: 2 }}>
+          <Button onClick={() => fetchAssets({ initial: true })} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
@@ -1199,6 +1524,18 @@ export default function AdminTrackAssetsPage() {
 
   return (
     <Box sx={{ minHeight: "100vh", backgroundColor: "#fafbfc" }}>
+      {refreshing && (
+        <LinearProgress
+          sx={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 1300,
+          }}
+        />
+      )}
+
       {/* Sticky header */}
       <Box
         sx={{
@@ -1335,7 +1672,7 @@ export default function AdminTrackAssetsPage() {
 
       {/* Main content */}
       <Box sx={{ px: { xs: 2, md: 3, lg: 4 }, pb: 3 }}>
-        {/* ======= SUMMARY CARDS ======= */}
+        {/* SUMMARY CARDS */}
         <Grid container spacing={2} sx={{ mt: 2, mb: 2 }}>
           {[
             { label: "Total Assets", value: totals.count },
@@ -1350,7 +1687,7 @@ export default function AdminTrackAssetsPage() {
           ))}
         </Grid>
 
-        {/* ======= TABS + FILTERS ======= */}
+        {/* TABS + FILTERS */}
         <Card
           elevation={0}
           sx={{
@@ -1537,7 +1874,7 @@ export default function AdminTrackAssetsPage() {
           </Toolbar>
         </Card>
 
-        {/* ======= ASSETS TABLE ======= */}
+        {/* ASSETS TABLE */}
         <Card
           elevation={0}
           sx={{
@@ -1555,7 +1892,7 @@ export default function AdminTrackAssetsPage() {
             elevation={0}
             sx={{
               flex: 1,
-              overflowX: "auto", // allow horizontal scroll if needed
+              overflowX: "auto",
               overflowY: "hidden",
               pb: 0.5,
             }}
@@ -1631,6 +1968,27 @@ export default function AdminTrackAssetsPage() {
                       const serials = Array.isArray(row.serialNumbers)
                         ? row.serialNumbers
                         : [];
+
+                      const hasPendingDevice = serials.some(
+                        (s) => String(s.deviceStatus || "Pending") === "Pending"
+                      );
+                      let approval = String(row.assetStatus || "Pending");
+                      if (hasPendingDevice) {
+                        approval = "Pending";
+                      }
+
+                      const approvalColor =
+                        approval === "Accepted"
+                          ? "success"
+                          : approval === "Rejected"
+                          ? "error"
+                          : "default";
+
+                      const isAssetLocked =
+                        approval === "Accepted" || approval === "Rejected";
+
+                      const editDisabled = isEmployee;
+                      const deleteDisabled = isEmployee;
 
                       return (
                         <React.Fragment key={row._id}>
@@ -1718,7 +2076,7 @@ export default function AdminTrackAssetsPage() {
                                   onClick={() => toggleExpand(row._id)}
                                   sx={{
                                     border: "1px solid #e5e7eb",
-                                    p: 0.5, // tight
+                                    p: 0.5,
                                   }}
                                 >
                                   {isOpen ? (
@@ -1787,13 +2145,33 @@ export default function AdminTrackAssetsPage() {
                               </Typography>
                             </TableCell>
 
-                            {/* status */}
+                            {/* status + approval */}
                             <TableCell>
-                              <Chip
-                                size="small"
-                                label={st.label}
-                                sx={{ borderRadius: "20px", ...st.sx }}
-                              />
+                              <Stack spacing={0.5}>
+                                <Chip
+                                  size="small"
+                                  label={st.label}
+                                  sx={{ borderRadius: "20px", ...st.sx }}
+                                />
+                                <Chip
+                                  size="small"
+                                  label={`Approval: ${approval}`}
+                                  color={
+                                    approvalColor === "default"
+                                      ? "default"
+                                      : approvalColor
+                                  }
+                                  variant={
+                                    approvalColor === "default"
+                                      ? "outlined"
+                                      : "filled"
+                                  }
+                                  sx={{
+                                    borderRadius: "20px",
+                                    fontSize: 11,
+                                  }}
+                                />
+                              </Stack>
                             </TableCell>
 
                             {/* assigned */}
@@ -1837,7 +2215,7 @@ export default function AdminTrackAssetsPage() {
                               </Tooltip>
                             </TableCell>
 
-                            {/* actions — tightly packed, never overflow */}
+                            {/* actions */}
                             <TableCell
                               sx={{
                                 p: 0,
@@ -1856,6 +2234,70 @@ export default function AdminTrackAssetsPage() {
                                   whiteSpace: "nowrap",
                                 }}
                               >
+                                {/* Approve / Reject asset */}
+                                {isPrivileged && (
+                                  <>
+                                    <Tooltip title="Approve asset">
+                                      <span>
+                                        <IconButton
+                                          size="small"
+                                          disabled={
+                                            assetApprovalLoadingId ===
+                                            row._id + ":Accepted"
+                                          }
+                                          onClick={() =>
+                                            handleAssetDecision(
+                                              row._id,
+                                              "Accepted"
+                                            )
+                                          }
+                                          sx={{
+                                            color: "success.main",
+                                            p: 0.5,
+                                          }}
+                                        >
+                                          {assetApprovalLoadingId ===
+                                          row._id + ":Accepted" ? (
+                                            <CircularProgress size={16} />
+                                          ) : (
+                                            <CheckCircle fontSize="inherit" />
+                                          )}
+                                        </IconButton>
+                                      </span>
+                                    </Tooltip>
+
+                                    <Tooltip title="Reject asset">
+                                      <span>
+                                        <IconButton
+                                          size="small"
+                                          disabled={
+                                            assetApprovalLoadingId ===
+                                            row._id + ":Rejected"
+                                          }
+                                          onClick={() =>
+                                            handleAssetDecision(
+                                              row._id,
+                                              "Rejected"
+                                            )
+                                          }
+                                          sx={{
+                                            color: "error.main",
+                                            p: 0.5,
+                                          }}
+                                        >
+                                          {assetApprovalLoadingId ===
+                                          row._id + ":Rejected" ? (
+                                            <CircularProgress size={16} />
+                                          ) : (
+                                            <Cancel fontSize="inherit" />
+                                          )}
+                                        </IconButton>
+                                      </span>
+                                    </Tooltip>
+                                  </>
+                                )}
+
+                                {/* View details */}
                                 <Tooltip title="View details">
                                   <IconButton
                                     size="small"
@@ -1865,29 +2307,61 @@ export default function AdminTrackAssetsPage() {
                                     <Inventory2 fontSize="inherit" />
                                   </IconButton>
                                 </Tooltip>
-                                <Tooltip title="Edit">
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => openEdit(row)}
-                                    sx={{ color: "warning.main", p: 0.5 }}
-                                  >
-                                    <Edit fontSize="inherit" />
-                                  </IconButton>
+
+                                {/* Edit */}
+                                <Tooltip
+                                  title={
+                                    isEmployee
+                                      ? "Employees are not allowed to edit assets."
+                                      : "Edit"
+                                  }
+                                >
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      disabled={editDisabled}
+                                      onClick={() => openEdit(row)}
+                                      sx={{
+                                        color: editDisabled
+                                          ? "action.disabled"
+                                          : "warning.main",
+                                        p: 0.5,
+                                      }}
+                                    >
+                                      <Edit fontSize="inherit" />
+                                    </IconButton>
+                                  </span>
                                 </Tooltip>
-                                <Tooltip title="Delete (soft)">
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => onDelete(row)}
-                                    sx={{ color: "error.main", p: 0.5 }}
-                                  >
-                                    <Delete fontSize="inherit" />
-                                  </IconButton>
+
+                                {/* Delete */}
+                                <Tooltip
+                                  title={
+                                    isEmployee
+                                      ? "Employees are not allowed to delete assets."
+                                      : "Delete (soft)"
+                                  }
+                                >
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      disabled={deleteDisabled}
+                                      onClick={() => onDelete(row)}
+                                      sx={{
+                                        color: deleteDisabled
+                                          ? "action.disabled"
+                                          : "error.main",
+                                        p: 0.5,
+                                      }}
+                                    >
+                                      <Delete fontSize="inherit" />
+                                    </IconButton>
+                                  </span>
                                 </Tooltip>
                               </Box>
                             </TableCell>
                           </TableRow>
 
-                          {/* ===== Collapsible subtable row (redesigned) ===== */}
+                          {/* Collapsible subtable row */}
                           <TableRow sx={{ height: ROW_HEIGHT }}>
                             <TableCell />
                             <TableCell
@@ -1937,8 +2411,8 @@ export default function AdminTrackAssetsPage() {
                                       color="text.secondary"
                                       sx={{ ml: 1 }}
                                     >
-                                      Device Type, Brand, Serial, Notes & Added
-                                      On
+                                      Device Type, Brand, Serial, Notes, Status
+                                      & Added On
                                     </Typography>
                                   </Box>
 
@@ -1983,6 +2457,7 @@ export default function AdminTrackAssetsPage() {
                                           <TableCell>Brand</TableCell>
                                           <TableCell>Serial</TableCell>
                                           <TableCell>Notes</TableCell>
+                                          <TableCell>Status</TableCell>
                                           <TableCell>Added</TableCell>
                                           <TableCell align="right">
                                             Actions
@@ -1999,6 +2474,29 @@ export default function AdminTrackAssetsPage() {
                                             s,
                                             brands
                                           );
+
+                                          const devStatus = String(
+                                            s.deviceStatus || "Pending"
+                                          );
+                                          const devStatusColor =
+                                            devStatus === "Accepted"
+                                              ? "success"
+                                              : devStatus === "Rejected"
+                                              ? "error"
+                                              : "default";
+
+                                          const keyAccepted = `${row._id}:${s._id}:Accepted`;
+                                          const keyRejected = `${row._id}:${s._id}:Rejected`;
+
+                                          const deviceActionsDisabled =
+                                            isAssetLocked ||
+                                            devStatus !== "Pending";
+
+                                          const deviceTooltip = isAssetLocked
+                                            ? `Asset already ${approval}. Device actions disabled.`
+                                            : devStatus !== "Pending"
+                                            ? `Device already ${devStatus}. Only Pending devices can be updated.`
+                                            : "";
 
                                           return (
                                             <TableRow
@@ -2051,6 +2549,26 @@ export default function AdminTrackAssetsPage() {
                                                 </Typography>
                                               </TableCell>
                                               <TableCell>
+                                                <Chip
+                                                  size="small"
+                                                  label={devStatus}
+                                                  color={
+                                                    devStatusColor === "default"
+                                                      ? "default"
+                                                      : devStatusColor
+                                                  }
+                                                  variant={
+                                                    devStatusColor === "default"
+                                                      ? "outlined"
+                                                      : "filled"
+                                                  }
+                                                  sx={{
+                                                    borderRadius: "20px",
+                                                    fontSize: 11,
+                                                  }}
+                                                />
+                                              </TableCell>
+                                              <TableCell>
                                                 <Typography
                                                   variant="body2"
                                                   color="text.secondary"
@@ -2067,6 +2585,7 @@ export default function AdminTrackAssetsPage() {
                                                   direction="row"
                                                   spacing={0.5}
                                                   justifyContent="flex-end"
+                                                  alignItems="center"
                                                 >
                                                   <Tooltip title="Copy serial">
                                                     <IconButton
@@ -2087,6 +2606,100 @@ export default function AdminTrackAssetsPage() {
                                                       <ContentCopy fontSize="inherit" />
                                                     </IconButton>
                                                   </Tooltip>
+
+                                                  {isPrivileged && (
+                                                    <>
+                                                      <Tooltip
+                                                        title={
+                                                          deviceActionsDisabled
+                                                            ? deviceTooltip ||
+                                                              "Device action disabled"
+                                                            : "Approve device"
+                                                        }
+                                                      >
+                                                        <span>
+                                                          <IconButton
+                                                            size="small"
+                                                            disabled={
+                                                              deviceActionsDisabled ||
+                                                              deviceApprovalLoadingKey ===
+                                                                keyAccepted
+                                                            }
+                                                            onClick={() =>
+                                                              handleDeviceDecision(
+                                                                row._id,
+                                                                s.serial,
+                                                                "Accepted",
+                                                                devStatus,
+                                                                approval
+                                                              )
+                                                            }
+                                                            sx={{
+                                                              color:
+                                                                deviceActionsDisabled
+                                                                  ? "action.disabled"
+                                                                  : "success.main",
+                                                              p: 0.5,
+                                                            }}
+                                                          >
+                                                            {deviceApprovalLoadingKey ===
+                                                            keyAccepted ? (
+                                                              <CircularProgress
+                                                                size={16}
+                                                              />
+                                                            ) : (
+                                                              <CheckCircle fontSize="inherit" />
+                                                            )}
+                                                          </IconButton>
+                                                        </span>
+                                                      </Tooltip>
+
+                                                      <Tooltip
+                                                        title={
+                                                          deviceActionsDisabled
+                                                            ? deviceTooltip ||
+                                                              "Device action disabled"
+                                                            : "Reject device"
+                                                        }
+                                                      >
+                                                        <span>
+                                                          <IconButton
+                                                            size="small"
+                                                            disabled={
+                                                              deviceActionsDisabled ||
+                                                              deviceApprovalLoadingKey ===
+                                                                keyRejected
+                                                            }
+                                                            onClick={() =>
+                                                              handleDeviceDecision(
+                                                                row._id,
+                                                                s.serial,
+                                                                "Rejected",
+                                                                devStatus,
+                                                                approval
+                                                              )
+                                                            }
+                                                            sx={{
+                                                              color:
+                                                                deviceActionsDisabled
+                                                                  ? "action.disabled"
+                                                                  : "error.main",
+                                                              p: 0.5,
+                                                            }}
+                                                          >
+                                                            {deviceApprovalLoadingKey ===
+                                                            keyRejected ? (
+                                                              <CircularProgress
+                                                                size={16}
+                                                              />
+                                                            ) : (
+                                                              <Cancel fontSize="inherit" />
+                                                            )}
+                                                          </IconButton>
+                                                        </span>
+                                                      </Tooltip>
+                                                    </>
+                                                  )}
                                                 </Stack>
                                               </TableCell>
                                             </TableRow>
@@ -2099,24 +2712,16 @@ export default function AdminTrackAssetsPage() {
                               </Collapse>
                             </TableCell>
                           </TableRow>
-                          {/* ===== End collapsible subtable row ===== */}
                         </React.Fragment>
                       );
                     })}
-
-                    {/* Filler to maintain constant body height */}
-                    {/* {emptyRows > 0 && (
-                      <TableRow style={{ height: ROW_HEIGHT * emptyRows }}>
-                        <TableCell colSpan={COLUMNS.length} />
-                      </TableRow>
-                    )} */}
                   </>
                 )}
               </TableBody>
             </Table>
           </TableContainer>
 
-          {/* Pagination control pinned to bottom */}
+          {/* Pagination control */}
           <TablePagination
             component="div"
             count={filtered.length}
@@ -2185,8 +2790,8 @@ export default function AdminTrackAssetsPage() {
           setDetailsOpen(false);
           onDelete(row);
         }}
-        deviceTypes={deviceTypes} // <-- pass down
-        brands={brands} // <-- pass down
+        deviceTypes={deviceTypes}
+        brands={brands}
       />
 
       <Snackbar
@@ -2200,41 +2805,11 @@ export default function AdminTrackAssetsPage() {
 }
 
 /* ======================= Small bits ======================= */
-// function StatTile({ label, value }) {
-//   const theme = tileTheme(label);
-//   return (
-//     <Card
-//       elevation={0}
-//       sx={{
-//         borderRadius: "12px",
-//         border: `1px solid ${theme.border}`,
-//         background: theme.bg,
-//       }}
-//     >
-//       <CardContent sx={{ p: 1.75 }}>
-//         <Typography variant="caption" sx={{ color: theme.text }}>
-//           {label}
-//         </Typography>
-//         <Typography
-//           variant="h6"
-//           fontWeight={800}
-//           sx={{ mt: 0.5, color: theme.text }}
-//           title={String(value)}
-//         >
-//           {value}
-//         </Typography>
-//       </CardContent>
-//     </Card>
-//   );
-// }
 export function StatTile({ label, value }) {
   const theme = tileTheme(label);
 
   return (
-    <div
-      whileHover={{ scale: 1.03, y: -2 }}
-      transition={{ duration: 0.25, ease: "easeOut" }}
-    >
+    <div>
       <Card
         elevation={0}
         sx={{
@@ -2275,7 +2850,7 @@ export function StatTile({ label, value }) {
                 lineHeight: 1.2,
                 fontFamily: '"SF Mono","Monaco", monospace',
               }}
-              title={String(value)} // tooltip for full number
+              title={String(value)}
             >
               {value ?? "—"}
             </Typography>

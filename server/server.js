@@ -21,11 +21,15 @@ const {
   getAllBrandName,
   createBrand,
   createDeviceType,
+  updateAssetStatus,
+  updateDeviceStatus,
+  updateEmployeeAssetStatus,
+  updateEmployeeDeviceStatus,
 } = require("./controllers/trackAssets");
 const Assets = require("./models/assets");
 const DeviceType = require("./models/deviceType");
 const Brand = require("./models/brand");
-
+const runMigrations = require("./scripts/migrate");
 const app = express();
 
 // Increase payload size limits for bulk operations
@@ -109,6 +113,15 @@ app.get("/api/brands", getAllBrandName);
 app.post("/api/add-brand", createBrand);
 app.post("/api/add-device", createDeviceType);
 
+// NEW: status updates
+app.patch("/api/assets/:id/status", updateAssetStatus);
+app.patch("/api/assets/:id/serials/:serialId/status", updateDeviceStatus);
+app.patch("/api/assets/:id/employee-status", updateEmployeeAssetStatus);
+app.patch(
+  "/api/assets/:id/serials/:serialId/employee-status",
+  updateEmployeeDeviceStatus
+);
+
 // Use the expense routes (this will mount /api/expenses/* endpoints)
 app.use(expenseRoutes);
 
@@ -123,6 +136,8 @@ app.listen(4000, async () => {
     await Assets.init();
     await DeviceType.init();
     await Brand.init();
+    // ✅ Run migrations after DB connection is ready
+    await runMigrations();
     console.log("User and Leave models initialized");
   } catch (err) {
     console.error("Error connecting to MongoDB:", err);

@@ -1,3 +1,5 @@
+// src/pages/admin/track-assets/SerialNumbersEditor.jsx
+
 const { default: AddCatalogItemDialog } = require("./AddCatalogItemDialog");
 
 import { Add, Delete, Tag } from "@mui/icons-material";
@@ -25,11 +27,25 @@ import {
   CatalogIcon,
   brandAvatarEl,
   deviceIconEl,
-  findById,
+  findById as findByIdImported,
   isUrl,
   looksEmoji,
 } from "./catalogUtils";
-import React, { useEffect, useMemo, useState } from "react";
+
+import React from "react";
+
+/**
+ * Local fallback if catalogUtils.findById isn't exported.
+ * This prevents: TypeError: findById is not a function
+ */
+const findByIdFallback = (arr, id) => {
+  if (!arr || !id) return null;
+  const target = String(id);
+  return arr.find((x) => String(x?._id ?? x?.id ?? "") === target) || null;
+};
+// Choose imported if it's a function; otherwise fallback.
+const findById =
+  typeof findByIdImported === "function" ? findByIdImported : findByIdFallback;
 
 export default function SerialNumbersEditor({
   value,
@@ -49,8 +65,10 @@ export default function SerialNumbersEditor({
 
   const addRow = () =>
     onChange([...(value || []), { deviceType: "", serial: "", brand: "" }]);
+
   const removeRow = (i) =>
     onChange((value || []).filter((_, idx) => idx !== i));
+
   const setField = (i, patch) => {
     const next = [...(value || [])];
     next[i] = { ...next[i], ...patch };
@@ -58,11 +76,14 @@ export default function SerialNumbersEditor({
   };
 
   const serialErrors = (value || []).map((r) => !String(r.serial || "").trim());
-  const filterBy = (items, q) => {
-    const needle = q.trim().toLowerCase();
+
+  const filterBy = (items = [], q) => {
+    const needle = String(q || "")
+      .trim()
+      .toLowerCase();
     if (!needle) return items;
     return items.filter((it) =>
-      String(it.name || "")
+      String(it?.name || "")
         .toLowerCase()
         .includes(needle)
     );
@@ -209,7 +230,7 @@ export default function SerialNumbersEditor({
                           );
                         }}
                       >
-                        {/* search in menu */}
+                        {/* Search box inside the menu */}
                         <MenuItem
                           disableGutters
                           disableRipple
@@ -326,7 +347,7 @@ export default function SerialNumbersEditor({
                           );
                         }}
                       >
-                        {/* search in menu */}
+                        {/* Search box inside the menu */}
                         <MenuItem
                           disableGutters
                           disableRipple
