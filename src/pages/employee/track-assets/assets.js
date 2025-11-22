@@ -89,15 +89,15 @@ const STATUS_OPTIONS = ["Active", "In Maintenance", "Retired", "Lost", "Sold"];
 
 /** % widths (sum to 100) */
 const COLUMNS = [
-  { id: "asset", label: "Asset", width: 22 },
-  { id: "type", label: "Type", width: 10 },
-  { id: "serials", label: "Device Serials", width: 14 },
-  { id: "location", label: "Location", width: 12 },
-  { id: "purchase", label: "Purchase", width: 12 },
-  { id: "value", label: "Value", width: 10 },
-  { id: "status", label: "Status", width: 10 },
-  { id: "tags", label: "Tags", width: 10 },
-  { id: "actions", label: "Actions", width: 10 },
+  { id: "asset", label: "Asset", width: 14 },
+  { id: "type", label: "Type", width: 8 },
+  { id: "serials", label: "Device Serials", width: 11 },
+  { id: "location", label: "Location", width: 6 },
+  { id: "purchase", label: "Purchase", width: 9 },
+  { id: "value", label: "Value", width: 7 },
+  { id: "status", label: "Status", width: 8 },
+  { id: "tags", label: "Tags", width: 9 },
+  { id: "actions", label: "Actions", width: 14 },
 ];
 
 /* ======================= Helpers ======================= */
@@ -1688,7 +1688,7 @@ export default function EmployeeTrackAssetsPage() {
                               >
                                 <Chip
                                   size="small"
-                                  label={`Status: ${assetApprovalStatus}`}
+                                  label={`Asset Approval: ${assetApprovalStatus}`}
                                   color={
                                     assetApprovalStatusNorm === "accepted"
                                       ? "success"
