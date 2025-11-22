@@ -59,10 +59,10 @@ import {
   isUrl,
   looksEmoji,
   normalizeCatalog,
-} from "@/pages/admin/track-assets/catalogUtils";
+} from "../../../utils/catalogUtils";
 import React, { useEffect, useMemo, useState } from "react";
 
-import AssetDetailsDrawer from "@/pages/admin/track-assets/AssetDetailsDrawer";
+import AssetDetailsDrawer from "@/components/AssetDetailsDrawer";
 import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
 

@@ -17,7 +17,7 @@ const userSchema = new mongoose.Schema(
 
     role: {
       type: String,
-      enum: ["admin", "employee", "manager", "hr", "finance"],
+      enum: ["admin", "employee", "manager", "hr", "finance", "md"],
       default: "employee",
     },
 
@@ -48,6 +48,11 @@ const userSchema = new mongoose.Schema(
       type: Number,
       required: true,
       default: 0,
+    },
+    lastCarryForwardYear: {
+      type: Number,
+      required: false,
+      default: null,
     },
     // Date the employee joined the organization
     joiningDate: {

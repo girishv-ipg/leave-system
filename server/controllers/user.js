@@ -5,7 +5,6 @@ const Validator = require("validatorjs");
 const jwt = require("jsonwebtoken");
 
 const SALT_ROUNDS = 10;
-const SECRET_KEY = "ipg-automotive";
 
 // Register a new user
 const createUser = async (req, res) => {
@@ -256,9 +255,24 @@ const getAllEmployeesWithLeaveHistory = async (req, res) => {
 
     const employees = await User.find(employeeQuery).select("-password");
 
+    // Get start and end of the current year
+    const startOfYear = new Date(new Date().getFullYear(), 0, 1);
+    const endOfYear = new Date(
+      new Date().getFullYear(),
+      11,
+      31,
+      23,
+      59,
+      59,
+      999
+    );
+
     const employeesWithLeaves = await Promise.all(
       employees.map(async (emp) => {
-        const leaveHistory = await Leave.find({ user: emp._id })
+        const leaveHistory = await Leave.find({
+          user: emp._id,
+          createdAt: { $gte: startOfYear, $lte: endOfYear },
+        })
           .populate("reviewedBy")
           .sort({ createdAt: -1 });
         return {
@@ -287,8 +301,23 @@ const getEmployeeWithLeaveHistory = async (req, res) => {
       return res.status(404).json({ error: "Employee not found" });
     }
 
+    // Get start and end of the current year
+    const startOfYear = new Date(new Date().getFullYear(), 0, 1);
+    const endOfYear = new Date(
+      new Date().getFullYear(),
+      11,
+      31,
+      23,
+      59,
+      59,
+      999
+    );
+
     // Get leave history for that employee
-    const leaveHistory = await Leave.find({ user: employee._id })
+    const leaveHistory = await Leave.find({
+      user: employee._id,
+      createdAt: { $gte: startOfYear, $lte: endOfYear },
+    })
       .populate("reviewedBy", "name") // Populate reviewedBy with only the name
       .sort({ createdAt: -1 });
 

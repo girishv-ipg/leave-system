@@ -4,6 +4,7 @@ import { Box, Grid, IconButton, Paper, Typography } from "@mui/material";
 
 import { Logout } from "@mui/icons-material";
 import React from "react";
+import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
 
 const Main = () => {
@@ -44,8 +45,13 @@ const Main = () => {
       } catch (e) {}
     }
 
-    if (userRole === "admin" || userRole === "manager" || userRole === "hr") {
-      router.push("/admin/requests");
+    if (
+      userRole === "admin" ||
+      userRole === "manager" ||
+      userRole === "hr" ||
+      userRole === "md"
+    ) {
+      router.push("/admin/home");
     } else {
       router.push("/employee/requestLeave");
     }
@@ -75,7 +81,7 @@ const Main = () => {
   const cards = [
     {
       title: "Leave Management",
-      route: "/admin/requests",
+      route: "/admin/home",
       onClick: handleLeaveManagementClick,
     },
     {
@@ -89,10 +95,33 @@ const Main = () => {
       onClick: handleTrackAssetsClick,
     },
   ];
-  const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-    router.push("/login");
+
+  // Logout function
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem("token");
+
+      const response = await axiosInstance.post(
+        "/logout",
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      // If backend says logout success → remove token
+      if (response.status === 200) {
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+        window.location.href = "/";
+      } else {
+        console.error("Logout failed:", response);
+      }
+    } catch (err) {
+      console.error("Logout API failed:", err);
+    }
   };
 
   return (

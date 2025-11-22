@@ -45,8 +45,8 @@ import {
   getDeviceTypeItem,
   isUrl,
   looksEmoji,
-} from "./catalogUtils";
-import { chipForStatus, money } from "./common";
+} from "../utils/catalogUtils";
+import { chipForStatus, money } from "./commonAssets.js";
 
 import React from "react";
 import axiosInstance from "@/utils/helpers";

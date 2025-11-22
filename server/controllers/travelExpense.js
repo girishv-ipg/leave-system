@@ -255,7 +255,7 @@ const getExpenseById = async (req, res) => {
 const updateExpense = async (req, res) => {
   try {
     const { id, expenseId } = req.params;
-    const { expenseType, amount, description, startDate, endDate } = req.body;
+    const { expenseType, amount, description, startDate, endDate, attendees, purpose } = req.body;
 
     let submission = await Expense.findById(id);
 
@@ -292,6 +292,8 @@ const updateExpense = async (req, res) => {
     if (description) currentExpense.description = description;
     if (startDate) currentExpense.startDate = new Date(startDate);
     if (endDate) currentExpense.endDate = new Date(endDate);
+    if(attendees) currentExpense.attendees = attendees;
+    if(purpose) currentExpense.purpose = purpose;
 
     // Handle file update
     if (req.files && req.files.length > 0) {

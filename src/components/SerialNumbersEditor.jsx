@@ -30,22 +30,8 @@ import {
   findById as findByIdImported,
   isUrl,
   looksEmoji,
-} from "./catalogUtils";
-
-import React from "react";
-
-/**
- * Local fallback if catalogUtils.findById isn't exported.
- * This prevents: TypeError: findById is not a function
- */
-const findByIdFallback = (arr, id) => {
-  if (!arr || !id) return null;
-  const target = String(id);
-  return arr.find((x) => String(x?._id ?? x?.id ?? "") === target) || null;
-};
-// Choose imported if it's a function; otherwise fallback.
-const findById =
-  typeof findByIdImported === "function" ? findByIdImported : findByIdFallback;
+} from "../utils/catalogUtils";
+import React, { useEffect, useMemo, useState } from "react";
 
 export default function SerialNumbersEditor({
   value,

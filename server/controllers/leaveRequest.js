@@ -1,11 +1,12 @@
 const Validator = require("validatorjs");
 const User = require("../models/user");
 const Leave = require("../models/leave");
+const { holidays } = require("../utils/helpers");
 
 // Function to validate the leave data
 const validateLeaveData = (data) => {
   const rules = {
-    leaveType: "required|in:casual,sick,wfh,on_duty",
+    leaveType: "required|in:casual,sick,wfh,on_duty,pl,lop",
     startDate: "required|date",
     endDate: "required|date|after_or_equal:startDate",
     reason: "required|string",
@@ -54,6 +55,24 @@ const registerLeaveRequest = async (req, res) => {
       });
     }
 
+    // ✅ Convert to Date objects
+    const sDate = new Date(startDate);
+    const eDate = new Date(endDate);
+
+    // ✅ CHECK FOR EXISTING LEAVE, WFH, ON_DUTY IN THIS RANGE
+    const overlap = await Leave.findOne({
+      user: userId,
+      startDate: { $lte: eDate },
+      endDate: { $gte: sDate },
+      status: { $ne: "cancelled" }, // ignore cancelled leaves
+    });
+
+    if (overlap) {
+      return res.status(400).json({
+        message: `You already have a registered ${overlap.leaveType.toUpperCase()} on this selected date range.`,
+      });
+    }
+
     // Create a new leave request
     const leaveRequest = new Leave({
       user: userId,
@@ -92,7 +111,7 @@ const getPendingLeaveRequests = async (req, res) => {
     // fetch the logged‐in user
     const user = await User.findById(req.user.userId).exec();
 
-    switch (user.role) {
+    switch (user?.role) {
       case "admin":
         // no additional filters: admin sees everything
         break;
@@ -104,6 +123,18 @@ const getPendingLeaveRequests = async (req, res) => {
         }).select("_id");
         const employeeIds = departmentEmployees.map((emp) => emp._id);
         baseQuery.user = { $in: employeeIds };
+        break;
+      }
+
+      case "md": {
+        // MD sees leaves of: manager, hr, finance
+        const allowedRoles = ["md", "manager", "hr", "finance"];
+
+        const employees = await User.find({
+          role: { $in: allowedRoles },
+        }).select("_id");
+
+        baseQuery.user = { $in: employees.map((e) => e._id) };
         break;
       }
 
@@ -242,21 +273,6 @@ const updateLeaveStatus = async (req, res) => {
 };
 
 const countWorkingDays = (start, end) => {
-  const holidays = [
-    "2025-01-01",
-    "2025-01-14",
-    "2025-01-26",
-    "2025-02-26",
-    "2025-04-18",
-    "2025-05-01",
-    "2025-08-15",
-    "2025-08-27",
-    "2025-10-01",
-    "2025-10-02",
-    "2025-10-20",
-    "2025-11-01",
-    "2025-10-25",
-  ];
   const current = new Date(start);
   let count = 0;
   while (current <= end) {

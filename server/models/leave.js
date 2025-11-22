@@ -10,7 +10,7 @@ const leaveSchema = new mongoose.Schema(
 
     leaveType: {
       type: String,
-      enum: ["casual", "sick", "wfh", "on_duty"],
+      enum: ["casual", "sick", "wfh", "on_duty", "pl", "lop"],
       required: true,
     },
 
@@ -45,6 +45,10 @@ const leaveSchema = new mongoose.Schema(
     reviewedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+    },
+    autoApprovedBySystem: {
+      type: Boolean,
+      default: false,
     },
 
     reviewedOn: {
