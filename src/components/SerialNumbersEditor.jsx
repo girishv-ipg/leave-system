@@ -27,6 +27,7 @@ import {
   CatalogIcon,
   brandAvatarEl,
   deviceIconEl,
+  findById,
   findById as findByIdImported,
   isUrl,
   looksEmoji,
