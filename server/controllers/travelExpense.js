@@ -55,12 +55,12 @@ const createExpense = async (req, res) => {
             const sizeInBytes = (file.data.length * 3) / 4;
             const sizeInMB = sizeInBytes / (1024 * 1024);
 
-            if (sizeInMB > 5) {
-              // Limit to 5MB per file
+            if (sizeInMB > 1) {
+              // Limit to 1MB per file
               return res.status(400).json({
                 error: `File ${file.name} is too large (${sizeInMB.toFixed(
                   2
-                )}MB). Maximum size is 5MB.`,
+                )}MB). Maximum size is 1MB.`,
               });
             }
           }

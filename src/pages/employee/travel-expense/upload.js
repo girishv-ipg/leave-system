@@ -428,7 +428,6 @@ export default function BulkExpenseEntry() {
               : hasExistingFile
               ? "rgba(25, 118, 210, 0.05)"
               : "rgba(0, 0, 0, 0.02)",
-            cursor: "pointer",
             minHeight: 40,
             display: "flex",
             alignItems: "center",
@@ -441,6 +440,7 @@ export default function BulkExpenseEntry() {
         >
           <input
             type="file"
+            title=""
             accept=".jpg,.jpeg,.png,.pdf"
             onChange={(e) => handleFileChange(expense.id, e.target.files[0])}
             style={{
@@ -453,15 +453,15 @@ export default function BulkExpenseEntry() {
           />
           {hasNewFile ? (
             <Tooltip
-              title={`${expense.fileName} (${(expense.file.size / 1024).toFixed(
+              title={fileSize <= 1 ? `${expense.fileName} (${(expense.file.size / 1024).toFixed(
                 1
-              )} KB)`}
+              )} KB)` : ""}
             >
               <Chip
                 label={
-                  expense.fileName.length > 15
+                  expense.fileName.length > 15 && fileSize <= 1
                     ? `${expense.fileName.substring(0, 15)}...`
-                    : expense.fileName
+                    : fileSize <= 1 ? expense.fileName : "Please upload file less than 1MB"
                 }
                 color={fileSize <= 1 ? "success" : "error"}
                 size="small"
@@ -690,21 +690,6 @@ export default function BulkExpenseEntry() {
                           fontWeight: 600,
                           bgcolor: isEditMode ? "warning.main" : "primary.main",
                           color: "white",
-                          minWidth: 150,
-                        }}
-                      >
-                        <Box
-                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
-                        >
-                          <BusinessCenter sx={{ fontSize: 16 }} />
-                          Purpose
-                        </Box>
-                      </TableCell>
-                      <TableCell
-                        sx={{
-                          fontWeight: 600,
-                          bgcolor: isEditMode ? "warning.main" : "primary.main",
-                          color: "white",
                         }}
                       >
                         <Box
@@ -742,6 +727,21 @@ export default function BulkExpenseEntry() {
                         >
                           <CalendarToday sx={{ fontSize: 16 }} />
                           End Date
+                        </Box>
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          fontWeight: 600,
+                          bgcolor: isEditMode ? "warning.main" : "primary.main",
+                          color: "white",
+                          minWidth: 150,
+                        }}
+                      >
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
+                          <BusinessCenter sx={{ fontSize: 16 }} />
+                          Purpose
                         </Box>
                       </TableCell>
                       <TableCell
@@ -839,23 +839,6 @@ export default function BulkExpenseEntry() {
                         </TableCell>
                         <TableCell>
                           <TextField
-                            value={expense.purpose}
-                            onChange={(e) =>
-                              updateExpense(
-                                expense.id,
-                                "purpose",
-                                e.target.value
-                              )
-                            }
-                            fullWidth
-                            size="small"
-                            placeholder="Enter purpose"
-                            multiline
-                            maxRows={2}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <TextField
                             value={expense.description}
                             onChange={(e) =>
                               updateExpense(
@@ -865,6 +848,7 @@ export default function BulkExpenseEntry() {
                               )
                             }
                             fullWidth
+                            sx={{ minWidth: 150 }}
                             size="small"
                             placeholder="Enter description"
                             multiline
@@ -901,6 +885,23 @@ export default function BulkExpenseEntry() {
                             fullWidth
                             size="small"
                             InputLabelProps={{ shrink: true }}
+                          />
+                        </TableCell>
+                         <TableCell>
+                          <TextField
+                            value={expense.purpose}
+                            onChange={(e) =>
+                              updateExpense(
+                                expense.id,
+                                "purpose",
+                                e.target.value
+                              )
+                            }
+                            fullWidth
+                            size="small"
+                            placeholder="Enter purpose"
+                            multiline
+                            maxRows={2}
                           />
                         </TableCell>
                         <TableCell>
@@ -1093,7 +1094,7 @@ export default function BulkExpenseEntry() {
                     Fill in all the required fields for each expense entry
                   </Typography>
                   <Typography component="li" variant="body2" sx={{ mb: 1 }}>
-                    Upload receipts in JPG, PNG, or PDF format (max 1MB each)
+                    Upload receipts in JPG, PNG, JPEG or PDF format (max 1MB each)
                   </Typography>
                   <Typography component="li" variant="body2" sx={{ mb: 1 }}>
                     Ensure travel end date is not before start date

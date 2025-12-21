@@ -50,7 +50,7 @@ const expensesSchema = new mongoose.Schema({
     {
       name: { type: String },
       type: { type: String },
-      data: { type: String },
+      data: { type: Buffer },
     },
   ],
   approvedBy: {
