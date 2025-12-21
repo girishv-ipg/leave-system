@@ -247,7 +247,6 @@ export default function AdminExpenses() {
     // Can only edit if:
     // 1. User is the original submitter
     // 2. Expense status is pending or rejected
-    console.log("expense, submission, currentUser => ", expense, "\n",submission,"\n", currentUser);
     return (
       submission.employeeId === currentUser?._id &&
       (expense.status === "pending" || expense.status === "rejected")
@@ -422,11 +421,6 @@ export default function AdminExpenses() {
         });
       });
 
-      if (files.length === 0) {
-        setIsFilesPresent(false);
-        return;
-      }
-
       const zip = new JSZip();
 
       // Put files inside a folder for neatness
@@ -474,13 +468,17 @@ export default function AdminExpenses() {
     }
   };
 
-  const [filterType, setFilterType] = useState("name");
+  const [filterType, setFilterType] = useState("month");
+
+  // get current month name
+  const currentMonth = new Date().getMonth() + 1;
+
 
   // Table filters
   const [filters, setFilters] = useState({
     name: "",
     year: "",
-    month: "",
+    month: currentMonth,
     date: "",
   });
 
@@ -1915,9 +1913,7 @@ export default function AdminExpenses() {
                                           {/* View Document Button */}
                                           {expense.files &&
                                             expense.files.length > 0 && (
-                                              <Tooltip
-                                                title="view"
-                                              >
+                                              <Tooltip title="view">
                                                 <IconButton
                                                   size="small"
                                                   onClick={(e) => {
@@ -2186,7 +2182,10 @@ export default function AdminExpenses() {
           </MenuItem>
 
           {/* NEW: Download all receipts as ZIP */}
-          <MenuItem onClick={() => downloadAllReceipts(selectedSubmission)}>
+          <MenuItem
+            disabled={!selectedSubmission?.expenses?.some((exp) => exp.files && exp.files.length > 0)}
+            onClick={() => downloadAllReceipts(selectedSubmission)}
+          >
             <ListItemIcon>
               <FolderZip sx={{ fontSize: 20, color: "#e4c605c6" }} />
             </ListItemIcon>
