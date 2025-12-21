@@ -41,13 +41,16 @@ import {
   DialogContent,
   DialogTitle,
   Fade,
+  FormControl,
   Grid,
   IconButton,
+  InputLabel,
   ListItemIcon,
   ListItemText,
   Menu,
   MenuItem,
   Paper,
+  Select,
   Stack,
   Tab,
   Table,
@@ -63,10 +66,13 @@ import {
 } from "@mui/material";
 import { act, useEffect, useMemo, useState } from "react";
 
+import { CloudUpload } from "@mui/icons-material";
+import { Delete } from "@mui/icons-material";
+import { Description } from "@mui/icons-material";
 import ExpenseFiltersMenu from "@/utils/ExpenseFiltersOthers";
+import { FilePresent } from "@mui/icons-material";
 import { FolderZip } from "@mui/icons-material";
 import JSZip from "jszip";
-import { Status } from "filepond";
 import axiosInstance from "@/utils/helpers";
 import { saveAs } from "file-saver";
 import { useRouter } from "next/navigation";
@@ -91,6 +97,162 @@ export default function AdminExpenses() {
   const [currentUser, setCurrentUser] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedSubmission, setSelectedSubmission] = useState(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [selectedExpense, setSelectedExpense] = useState(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    expenseType: "",
+    amount: "",
+    description: "",
+    startDate: "",
+    endDate: "",
+  });
+  const [newFile, setNewFile] = useState(null);
+
+  // Add these helper functions before the return statement
+
+  const handleEditExpense = (expense, submission) => {
+    setSelectedExpense(expense);
+    setSelectedSubmission(submission);
+    setEditFormData({
+      expenseType: expense.expenseType || "",
+      amount: expense.amount.toString(),
+      description: expense.description,
+      startDate: expense.startDate,
+      endDate: expense.endDate,
+    });
+    setNewFile(null);
+    setEditDialogOpen(true);
+  };
+
+  const handleFormChange = (field, value) => {
+    setEditFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (!file) {
+      setNewFile(null);
+      return;
+    }
+
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/jpg",
+      "application/pdf",
+    ];
+
+    if (file.size > maxSize) {
+      setError("File size must be less than 10MB");
+      event.target.value = "";
+      return;
+    }
+
+    if (!allowedTypes.includes(file.type)) {
+      setError("Only JPEG, PNG, and PDF files are allowed");
+      event.target.value = "";
+      return;
+    }
+
+    setNewFile(file);
+  };
+
+  const clearFile = () => {
+    setNewFile(null);
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  };
+
+  const getFileIcon = (fileName) => {
+    const extension = fileName?.split(".").pop()?.toLowerCase();
+    return extension === "pdf" ? <Description /> : <FilePresent />;
+  };
+
+  const handleSaveExpense = async () => {
+    try {
+      setEditLoading(true);
+      const token = localStorage.getItem("token");
+
+      const formData = new FormData();
+      Object.entries(editFormData).forEach(([key, value]) => {
+        formData.append(key, value);
+      });
+
+      if (newFile) {
+        formData.append("file", newFile);
+      }
+
+      const response = await axiosInstance.put(
+        `/expenses/${selectedSubmission._id}/expense/${selectedExpense._id}`,
+        formData,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.message) {
+        handleCloseEditDialog();
+        setSuccess("Expense updated successfully!");
+        setTimeout(() => setSuccess(""), 3000);
+        fetchExpenses(activeTab);
+      } else {
+        setError("Failed to update expense");
+      }
+    } catch (err) {
+      console.error("Error updating expense:", err);
+      setError(
+        err.response?.data?.error ||
+          "Failed to update expense. Please try again."
+      );
+      setTimeout(() => setError(""), 4000);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleCloseEditDialog = () => {
+    setEditDialogOpen(false);
+    setSelectedExpense(null);
+    setSelectedSubmission(null);
+    setNewFile(null);
+    setEditFormData({
+      expenseType: "",
+      amount: "",
+      description: "",
+      startDate: "",
+      endDate: "",
+    });
+  };
+
+  const isFormValid = () => {
+    return (
+      editFormData.expenseType &&
+      editFormData.amount &&
+      parseFloat(editFormData.amount) > 0 &&
+      editFormData.description &&
+      editFormData.startDate &&
+      editFormData.endDate &&
+      new Date(editFormData.startDate) <= new Date(editFormData.endDate)
+    );
+  };
+
+  // Check if current user can edit this expense
+  const canEditExpense = (expense, submission) => {
+    // Can only edit if:
+    // 1. User is the original submitter
+    // 2. Expense status is pending or rejected
+    console.log("expense, submission, currentUser => ", expense, "\n",submission,"\n", currentUser);
+    return (
+      submission.employeeId === currentUser?._id &&
+      (expense.status === "pending" || expense.status === "rejected")
+    );
+  };
 
   // Menu handlers
   const handleMenuOpen = (event, submission) => {
@@ -1721,11 +1883,40 @@ export default function AdminExpenses() {
                                       </TableCell>
                                       <TableCell>
                                         <Box sx={{ display: "flex", gap: 0.5 }}>
+                                          {/* Edit Button  */}
+                                          {canEditExpense(
+                                            expense,
+                                            submission
+                                          ) && (
+                                            <Tooltip title="Edit Expense">
+                                              <IconButton
+                                                size="small"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleEditExpense(
+                                                    expense,
+                                                    submission
+                                                  );
+                                                }}
+                                                sx={{
+                                                  color: "warning.main",
+                                                  transition: "all 0.2s ease",
+                                                  "&:hover": {
+                                                    transform:
+                                                      "scale(1.1) rotate(15deg)",
+                                                    color: "warning.dark",
+                                                  },
+                                                }}
+                                              >
+                                                <Edit fontSize="small" />
+                                              </IconButton>
+                                            </Tooltip>
+                                          )}
                                           {/* View Document Button */}
                                           {expense.files &&
                                             expense.files.length > 0 && (
                                               <Tooltip
-                                                title={expense.files.length}
+                                                title="view"
                                               >
                                                 <IconButton
                                                   size="small"
@@ -1760,7 +1951,7 @@ export default function AdminExpenses() {
                                           {/* Individual Approve/Disapprove buttons for Finance only */}
                                           {canActOnExpense(expense) && (
                                             <>
-                                              <Tooltip title={expense._id}>
+                                              <Tooltip title="Approve">
                                                 <IconButton
                                                   size="small"
                                                   onClick={(e) => {
@@ -2268,6 +2459,343 @@ export default function AdminExpenses() {
                   } Reject ${actionDialog.type === "bulk" ? "All" : "Expense"}`}
             </Button>
           </DialogActions>
+        </Dialog>
+        {/* Edit Expense Dialog */}
+        <Dialog
+          open={editDialogOpen}
+          onClose={handleCloseEditDialog}
+          maxWidth="md"
+          fullWidth
+          PaperProps={{
+            sx: { borderRadius: "12px" },
+          }}
+        >
+          {selectedExpense && (
+            <>
+              <DialogTitle sx={{ borderBottom: "1px solid #e1e4e8", pb: 2 }}>
+                <Box sx={{ display: "flex", alignItems: "center" }}>
+                  <Avatar
+                    sx={{
+                      bgcolor: "warning.main",
+                      mr: 2,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <Edit />
+                  </Avatar>
+                  <Box>
+                    <Typography variant="h6" fontWeight={600}>
+                      Edit Expense
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Modify expense details - will require re-approval
+                    </Typography>
+                  </Box>
+                </Box>
+              </DialogTitle>
+
+              <DialogContent sx={{ pt: "20px !important" }}>
+                <Grid container spacing={3}>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Expense Type</InputLabel>
+                      <Select
+                        value={editFormData.expenseType}
+                        label="Expense Type"
+                        onChange={(e) =>
+                          handleFormChange("expenseType", e.target.value)
+                        }
+                        sx={{ borderRadius: "8px" }}
+                      >
+                        {[
+                          "travel",
+                          "accommodation",
+                          "meals",
+                          "transport",
+                          "office_supplies",
+                          "training",
+                          "other",
+                        ].map((type) => (
+                          <MenuItem key={type} value={type}>
+                            {type
+                              .replace("_", " ")
+                              .replace(/\b\w/g, (l) => l.toUpperCase())}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Amount (₹)"
+                      type="number"
+                      value={editFormData.amount}
+                      onChange={(e) =>
+                        handleFormChange("amount", e.target.value)
+                      }
+                      inputProps={{ min: 0, step: 0.01 }}
+                      sx={{
+                        "& .MuiOutlinedInput-root": { borderRadius: "8px" },
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Description"
+                      multiline
+                      rows={3}
+                      value={editFormData.description}
+                      onChange={(e) =>
+                        handleFormChange("description", e.target.value)
+                      }
+                      placeholder="Enter expense description..."
+                      sx={{
+                        "& .MuiOutlinedInput-root": { borderRadius: "8px" },
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Travel Start Date"
+                      type="date"
+                      value={editFormData.startDate}
+                      onChange={(e) =>
+                        handleFormChange("startDate", e.target.value)
+                      }
+                      InputLabelProps={{ shrink: true }}
+                      sx={{
+                        "& .MuiOutlinedInput-root": { borderRadius: "8px" },
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Travel End Date"
+                      type="date"
+                      value={editFormData.endDate}
+                      onChange={(e) =>
+                        handleFormChange("endDate", e.target.value)
+                      }
+                      InputLabelProps={{ shrink: true }}
+                      sx={{
+                        "& .MuiOutlinedInput-root": { borderRadius: "8px" },
+                      }}
+                    />
+                  </Grid>
+
+                  {/* Current File Display */}
+                  {selectedExpense.files &&
+                    selectedExpense.files.length > 0 &&
+                    !newFile && (
+                      <Grid item xs={12}>
+                        <Card
+                          sx={{
+                            bgcolor: "grey.50",
+                            border: "1px solid #e1e4e8",
+                            borderRadius: "8px",
+                          }}
+                        >
+                          <CardContent sx={{ p: 2 }}>
+                            <Box
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 2,
+                              }}
+                            >
+                              <Avatar sx={{ bgcolor: "primary.main" }}>
+                                {getFileIcon(selectedExpense.files[0].name)}
+                              </Avatar>
+                              <Box sx={{ flexGrow: 1 }}>
+                                <Typography
+                                  variant="subtitle2"
+                                  color="text.secondary"
+                                >
+                                  Current Receipt
+                                </Typography>
+                                <Typography
+                                  variant="body2"
+                                  sx={{ fontWeight: 550 }}
+                                >
+                                  {selectedExpense.files[0].name}
+                                </Typography>
+                              </Box>
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={() => viewDocument(selectedExpense)}
+                                sx={{ borderRadius: "6px" }}
+                              >
+                                View
+                              </Button>
+                            </Box>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    )}
+
+                  {/* File Upload */}
+                  <Grid item xs={12}>
+                    <Card
+                      elevation={newFile ? 1 : 0}
+                      sx={{
+                        border: newFile
+                          ? "2px solid #22c55e"
+                          : "2px dashed #cbd5e1",
+                        bgcolor: newFile ? "#f0fdf4" : "#fafbfc",
+                        borderRadius: "12px",
+                        transition: "all 0.3s ease",
+                      }}
+                    >
+                      <CardContent sx={{ p: 3 }}>
+                        {!newFile ? (
+                          <Box sx={{ textAlign: "center" }}>
+                            <CloudUpload
+                              sx={{
+                                fontSize: 48,
+                                color: "text.secondary",
+                                mb: 2,
+                              }}
+                            />
+                            <Typography variant="h6" sx={{ mb: 1 }}>
+                              Upload New Receipt
+                            </Typography>
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{ mb: 2 }}
+                            >
+                              Choose a file to upload (JPEG, PNG, PDF • Max
+                              10MB)
+                            </Typography>
+                            <Button
+                              component="label"
+                              variant="outlined"
+                              startIcon={<CloudUpload />}
+                              sx={{ borderRadius: "8px" }}
+                            >
+                              Choose File
+                              <input
+                                hidden
+                                accept="image/jpeg,image/jpg,image/png,application/pdf"
+                                type="file"
+                                onChange={handleFileChange}
+                              />
+                            </Button>
+                          </Box>
+                        ) : (
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 2,
+                            }}
+                          >
+                            <Avatar sx={{ bgcolor: "#22c55e", color: "white" }}>
+                              {getFileIcon(newFile.name)}
+                            </Avatar>
+                            <Box sx={{ flexGrow: 1 }}>
+                              <Typography
+                                variant="subtitle1"
+                                color="#22c55e"
+                                fontWeight={600}
+                              >
+                                {newFile.name}
+                              </Typography>
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
+                                {formatFileSize(newFile.size)}
+                              </Typography>
+                            </Box>
+                            <Button
+                              component="label"
+                              variant="outlined"
+                              size="small"
+                              sx={{ borderRadius: "6px" }}
+                            >
+                              Change
+                              <input
+                                hidden
+                                accept="image/jpeg,image/jpg,image/png,application/pdf"
+                                type="file"
+                                onChange={handleFileChange}
+                              />
+                            </Button>
+                            <IconButton
+                              onClick={clearFile}
+                              sx={{ color: "error.main" }}
+                            >
+                              <Delete />
+                            </IconButton>
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  {/* Rejection Comments Display */}
+                  {selectedExpense.adminComments &&
+                    selectedExpense.status === "rejected" && (
+                      <Grid item xs={12}>
+                        <Alert severity="error" sx={{ borderRadius: "8px" }}>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Rejection Reason:
+                          </Typography>
+                          <Typography variant="body2">
+                            {selectedExpense.adminComments}
+                          </Typography>
+                        </Alert>
+                      </Grid>
+                    )}
+
+                  {/* Warning about re-approval */}
+                  <Grid item xs={12}>
+                    <Alert severity="warning" sx={{ borderRadius: "8px" }}>
+                      <Typography variant="body2">
+                        <strong>Note:</strong> Editing this expense will reset
+                        its status to &quot;Pending&quot; and require
+                        re-approval from the approval workflow.
+                      </Typography>
+                    </Alert>
+                  </Grid>
+                </Grid>
+              </DialogContent>
+
+              <DialogActions sx={{ p: 3, pt: 1 }}>
+                <Button
+                  onClick={handleCloseEditDialog}
+                  disabled={editLoading}
+                  sx={{ borderRadius: "8px" }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveExpense}
+                  variant="contained"
+                  disabled={!isFormValid() || editLoading}
+                  startIcon={
+                    editLoading ? <CircularProgress size={16} /> : <Edit />
+                  }
+                  sx={{
+                    borderRadius: "8px",
+                    transition: "all 0.2s ease",
+                    "&:hover": {
+                      transform: "translateY(-1px)",
+                      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+                    },
+                  }}
+                >
+                  {editLoading ? "Saving..." : "Save Changes"}
+                </Button>
+              </DialogActions>
+            </>
+          )}
         </Dialog>
       </Box>
     </Box>

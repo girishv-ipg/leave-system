@@ -251,11 +251,19 @@ const getExpenseById = async (req, res) => {
   }
 };
 
-// Update expense
+// Update expense - Modified to allow editing own expenses regardless of role
 const updateExpense = async (req, res) => {
   try {
     const { id, expenseId } = req.params;
-    const { expenseType, amount, description, startDate, endDate, attendees, purpose } = req.body;
+    const {
+      expenseType,
+      amount,
+      description,
+      startDate,
+      endDate,
+      attendees,
+      purpose,
+    } = req.body;
 
     let submission = await Expense.findById(id);
 
@@ -263,8 +271,11 @@ const updateExpense = async (req, res) => {
       return res.status(404).json({ error: "Submission not found" });
     }
 
+    // Allow update if user is the original submitter, regardless of role
     if (submission.employeeId !== req.user.userId) {
-      return res.status(403).json({ error: "Access denied" });
+      return res.status(403).json({
+        error: "Access denied. You can only edit expenses you submitted.",
+      });
     }
 
     // Find the specific expense
@@ -278,12 +289,15 @@ const updateExpense = async (req, res) => {
 
     const currentExpense = submission.expenses[expenseIndex];
 
-    // Check if expense can be updated
+    // Check if expense can be updated - only pending or rejected expenses
     if (
       currentExpense.status !== "pending" &&
       currentExpense.status !== "rejected"
     ) {
-      return res.status(400).json({ error: "Cannot update approved expense" });
+      return res.status(400).json({
+        error:
+          "Cannot update expense that has been approved. Only pending or rejected expenses can be edited.",
+      });
     }
 
     // Update fields
@@ -292,8 +306,8 @@ const updateExpense = async (req, res) => {
     if (description) currentExpense.description = description;
     if (startDate) currentExpense.startDate = new Date(startDate);
     if (endDate) currentExpense.endDate = new Date(endDate);
-    if(attendees) currentExpense.attendees = attendees;
-    if(purpose) currentExpense.purpose = purpose;
+    if (attendees) currentExpense.attendees = attendees;
+    if (purpose) currentExpense.purpose = purpose;
 
     // Handle file update
     if (req.files && req.files.length > 0) {
@@ -309,10 +323,29 @@ const updateExpense = async (req, res) => {
       ];
     }
 
-    // Mark as resubmitted
+    // Mark as resubmitted and reset approval workflow
     currentExpense.isResubmitted = true;
     currentExpense.reSubmittedDate = new Date();
     currentExpense.status = "pending"; // Reset to pending after edit
+    currentExpense.adminComments = ""; // Clear previous comments
+    currentExpense.approvedBy = null;
+    currentExpense.approvedAt = null;
+
+    // Reset submission-level approvals since expense was edited
+    submission.isManagerApproved = false;
+    submission.isFinanceApproved = false;
+
+    // Update submission status based on all expenses
+    const allStatuses = submission.expenses.map((exp) => exp.status);
+    if (allStatuses.every((status) => status === "approved")) {
+      submission.status = "approved";
+    } else if (allStatuses.some((status) => status === "rejected")) {
+      submission.status = "rejected";
+    } else if (allStatuses.some((status) => status === "managerApproved")) {
+      submission.status = "managerApproved";
+    } else {
+      submission.status = "pending";
+    }
 
     // Recalculate total amount
     submission.totalAmount = submission.expenses.reduce(
@@ -323,7 +356,8 @@ const updateExpense = async (req, res) => {
     await submission.save();
 
     res.status(200).json({
-      message: "Expense updated successfully",
+      message:
+        "Expense updated successfully. It will need to be reviewed again.",
       data: submission,
     });
   } catch (error) {
