@@ -80,6 +80,8 @@ export default function ExpenseIndex() {
     description: "",
     startDate: "",
     endDate: "",
+    purpose: "",
+    attendees: "",
   });
   const [newFile, setNewFile] = useState(null);
   const [filterType, setFilterType] = useState("year");
@@ -295,6 +297,8 @@ export default function ExpenseIndex() {
       description: expense.description,
       startDate: expense.startDate,
       endDate: expense.endDate,
+      purpose: expense.purpose || "",
+      attendees: expense.attendees || "",
     });
     setNewFile(null);
     setEditDialogOpen(true);
@@ -396,11 +400,13 @@ export default function ExpenseIndex() {
     setSelectedExpense(null);
     setNewFile(null);
     setEditFormData({
-      expenseType: "",
       amount: "",
+      attendees: "",
       description: "",
-      startDate: "",
       endDate: "",
+      expenseType: "",
+      purpose: "",
+      startDate: "",
     });
   };
   const handleViewDocument = async (expense) => {
@@ -435,6 +441,9 @@ export default function ExpenseIndex() {
       editFormData.description &&
       editFormData.startDate &&
       editFormData.endDate &&
+      editFormData.startDate <= editFormData.endDate &&
+      editFormData.purpose &&
+      editFormData.attendees &&
       new Date(editFormData.startDate) <= new Date(editFormData.endDate)
     );
   };
@@ -1162,6 +1171,8 @@ export default function ExpenseIndex() {
                                     "Amount",
                                     "Description",
                                     "Period",
+                                    "Purpose",
+                                    "Attendees",
                                     "Status",
                                     "Actions",
                                   ].map((header) => (
@@ -1240,6 +1251,28 @@ export default function ExpenseIndex() {
                                               expense.endDate
                                             ).toLocaleDateString()}
                                           </Typography>
+                                        </TableCell>
+                                        <TableCell>
+                                          <Tooltip title={expense.description}>
+                                            <Typography
+                                              variant="body2"
+                                              noWrap
+                                              sx={{ maxWidth: 200 }}
+                                            >
+                                              {expense.purpose}
+                                            </Typography>
+                                          </Tooltip>
+                                        </TableCell>
+                                        <TableCell>
+                                          <Tooltip title={expense.description}>
+                                            <Typography
+                                              variant="body2"
+                                              noWrap
+                                              sx={{ maxWidth: 200 }}
+                                            >
+                                              {expense.attendees}
+                                            </Typography>
+                                          </Tooltip>
                                         </TableCell>
                                         <TableCell>
                                           <Box>
@@ -1632,6 +1665,42 @@ export default function ExpenseIndex() {
                         handleFormChange("endDate", e.target.value)
                       }
                       InputLabelProps={{ shrink: true }}
+                      sx={{
+                        "& .MuiOutlinedInput-root": {
+                          borderRadius: "8px",
+                        },
+                      }}
+                    />
+                  </Grid>
+                   <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Purpose"
+                      multiline
+                      rows={3}
+                      value={editFormData.purpose}
+                      onChange={(e) =>
+                        handleFormChange("purpose", e.target.value)
+                      }
+                      placeholder="Enter expense purpose..."
+                      sx={{
+                        "& .MuiOutlinedInput-root": {
+                          borderRadius: "8px",
+                        },
+                      }}
+                    />
+                  </Grid>
+                   <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Attendees"
+                      multiline
+                      rows={3}
+                      value={editFormData.attendees}
+                      onChange={(e) =>
+                        handleFormChange("attendees", e.target.value)
+                      }
+                      placeholder="Enter expense attendees..."
                       sx={{
                         "& .MuiOutlinedInput-root": {
                           borderRadius: "8px",

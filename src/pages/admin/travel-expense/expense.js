@@ -106,6 +106,8 @@ export default function AdminExpenses() {
     description: "",
     startDate: "",
     endDate: "",
+    purpose: "",
+    attendees: "",
   });
   const [newFile, setNewFile] = useState(null);
 
@@ -120,6 +122,8 @@ export default function AdminExpenses() {
       description: expense.description,
       startDate: expense.startDate,
       endDate: expense.endDate,
+      purpose: expense.purpose || "",
+      attendees: expense.attendees || "",
     });
     setNewFile(null);
     setEditDialogOpen(true);
@@ -227,6 +231,8 @@ export default function AdminExpenses() {
       description: "",
       startDate: "",
       endDate: "",
+      purpose: "",
+      attendees: "",
     });
   };
 
@@ -238,6 +244,9 @@ export default function AdminExpenses() {
       editFormData.description &&
       editFormData.startDate &&
       editFormData.endDate &&
+      editFormData.purpose &&
+      editFormData.attendees &&
+      editFormData.startDate <= editFormData.endDate &&
       new Date(editFormData.startDate) <= new Date(editFormData.endDate)
     );
   };
@@ -282,16 +291,26 @@ export default function AdminExpenses() {
       "Travel End Date": expense.endDate
         ? new Date(expense.endDate).toLocaleDateString()
         : "",
+      Purpose: expense.purpose || "-",
+      Attendees: expense.attendees || "-",
       Status: expense.status.charAt(0).toUpperCase() + expense.status.slice(1),
-      "Approved By": expense.approvedBy?.name || "",
-      "Approved At": expense.approvedAt
-        ? new Date(expense.approvedAt).toLocaleDateString()
-        : "",
-      "Admin Comments": expense.adminComments || "",
+      "Approved At": submission.approvedAt
+        ? new Date(submission.approvedAt).toLocaleDateString()
+        : "-",
+      "Admin Comments": expense.adminComments || "-",
       "Submitted Date": new Date(submission.createdAt).toLocaleDateString(),
       "Is Resubmitted": expense.isResubmitted ? "Yes" : "No",
-      "Total Amount (₹)": parseFloat(submission.totalAmount).toLocaleString(),
     }));
+
+    // blank row (gap)
+    excelData.push({});
+    excelData.push({});
+
+    // Add total amount
+    excelData.push({
+      "Expense Type": "TOTAL",
+      "Amount (₹)": parseFloat(submission.totalAmount).toLocaleString(),
+    });
 
     // Create worksheet
     const worksheet = XLSX.utils.json_to_sheet(excelData);
@@ -306,6 +325,8 @@ export default function AdminExpenses() {
       { wch: 30 }, // Description
       { wch: 15 }, // Travel Start Date
       { wch: 15 }, // Travel End Date
+      { wch: 20 }, // Purpose
+      { wch: 20 }, // Attendees
       { wch: 12 }, // Status
       { wch: 15 }, // Approved By
       { wch: 15 }, // Approved At
@@ -362,7 +383,7 @@ export default function AdminExpenses() {
         (file.type?.includes("pdf")
           ? "pdf"
           : file.type?.includes("image")
-          ? "jpg"
+          ? "jpg" || "png" || "jpeg"
           : "file");
 
       link.download = `${expense.expenseType}_${expense.amount}_receipt.${extension}`;
@@ -472,7 +493,6 @@ export default function AdminExpenses() {
 
   // get current month name
   const currentMonth = new Date().getMonth() + 1;
-
 
   // Table filters
   const [filters, setFilters] = useState({
@@ -1649,6 +1669,12 @@ export default function AdminExpenses() {
                                       Period
                                     </TableCell>
                                     <TableCell sx={{ fontWeight: 600 }}>
+                                      Purpose
+                                    </TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>
+                                      Attendees
+                                    </TableCell>
+                                    <TableCell sx={{ fontWeight: 600 }}>
                                       Status
                                     </TableCell>
                                     <TableCell sx={{ fontWeight: 600 }}>
@@ -1709,6 +1735,28 @@ export default function AdminExpenses() {
                                             expense.endDate
                                           ).toLocaleDateString()}
                                         </Typography>
+                                      </TableCell>
+                                      <TableCell>
+                                        <Tooltip title={expense.purpose}>
+                                          <Typography
+                                            variant="body2"
+                                            noWrap
+                                            sx={{ maxWidth: 150 }}
+                                          >
+                                            {expense.purpose}
+                                          </Typography>
+                                        </Tooltip>
+                                      </TableCell>
+                                      <TableCell>
+                                        <Tooltip title={expense.attendees}>
+                                          <Typography
+                                            variant="body2"
+                                            noWrap
+                                            sx={{ maxWidth: 150 }}
+                                          >
+                                            {expense.attendees}
+                                          </Typography>
+                                        </Tooltip>
                                       </TableCell>
                                       <TableCell noWrap sx={{ minWidth: 200 }}>
                                         <Box>
@@ -2183,7 +2231,11 @@ export default function AdminExpenses() {
 
           {/* NEW: Download all receipts as ZIP */}
           <MenuItem
-            disabled={!selectedSubmission?.expenses?.some((exp) => exp.files && exp.files.length > 0)}
+            disabled={
+              !selectedSubmission?.expenses?.some(
+                (exp) => exp.files && exp.files.length > 0
+              )
+            }
             onClick={() => downloadAllReceipts(selectedSubmission)}
           >
             <ListItemIcon>
@@ -2324,6 +2376,12 @@ export default function AdminExpenses() {
                           actionDialog.expense.endDate
                         ).toLocaleDateString()
                       : "Not available"}
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    <strong>Purpose:</strong> {actionDialog.expense.purpose}
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    <strong>Attendees:</strong> {actionDialog.expense.attendees}
                   </Typography>
                 </Paper>
               )}
@@ -2580,6 +2638,38 @@ export default function AdminExpenses() {
                         handleFormChange("endDate", e.target.value)
                       }
                       InputLabelProps={{ shrink: true }}
+                      sx={{
+                        "& .MuiOutlinedInput-root": { borderRadius: "8px" },
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Purpose"
+                      multiline
+                      rows={3}
+                      value={editFormData.purpose}
+                      onChange={(e) =>
+                        handleFormChange("purpose", e.target.value)
+                      }
+                      placeholder="Enter expense purpose..."
+                      sx={{
+                        "& .MuiOutlinedInput-root": { borderRadius: "8px" },
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Attendees"
+                      multiline
+                      rows={3}
+                      value={editFormData.attendees}
+                      onChange={(e) =>
+                        handleFormChange("attendees", e.target.value)
+                      }
+                      placeholder="Enter expense attendees..."
                       sx={{
                         "& .MuiOutlinedInput-root": { borderRadius: "8px" },
                       }}
