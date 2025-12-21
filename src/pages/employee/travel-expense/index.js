@@ -83,9 +83,17 @@ export default function ExpenseIndex() {
     purpose: "",
     attendees: "",
   });
+
+  // get current month name
+  const currentMonth = new Date().getMonth() + 1;
+
   const [newFile, setNewFile] = useState(null);
-  const [filterType, setFilterType] = useState("year");
-  const [filters, setFilters] = useState({ year: "", month: "", date: "" });
+  const [filterType, setFilterType] = useState("month");
+  const [filters, setFilters] = useState({
+    year: "",
+    month: currentMonth,
+    date: "",
+  });
 
   const router = useRouter();
 
@@ -545,7 +553,7 @@ export default function ExpenseIndex() {
                   width: 40,
                   height: 40,
                   mr: 3,
-                  background: "linear-gradient(135deg, #3367e09c 0%)",
+                  background: "linear-gradient(135deg, #4a7ef9ef 0%)",
                 }}
               >
                 <Receipt />
@@ -575,11 +583,8 @@ export default function ExpenseIndex() {
                 <IconButton
                   onClick={() => router.push("/main")}
                   sx={{
-                    transition: "all 0.2s ease",
-                    "&:hover": {
-                      color: "primary.main",
-                      transform: "translateY(-1px)",
-                    },
+                    color: "#000000ff",
+                    "&:hover": { backgroundColor: "rgba(59, 130, 246, 0.2)" },
                   }}
                 >
                   <Home />
@@ -593,11 +598,8 @@ export default function ExpenseIndex() {
                     router.push("/login");
                   }}
                   sx={{
-                    transition: "all 0.2s ease",
-                    "&:hover": {
-                      color: "error.main",
-                      transform: "translateY(-1px)",
-                    },
+                    color: "#000000ff",
+                    "&:hover": { backgroundColor: "rgba(239, 68, 68, 0.2)" },
                   }}
                 >
                   <Logout />
@@ -621,10 +623,9 @@ export default function ExpenseIndex() {
                   fontWeight: 600,
                   transition: "all 0.2s ease",
                   "&:hover": {
-                    transform: "translateY(-1px)",
                     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.16)",
                   },
-                  background: "linear-gradient(135deg, #3367e09c 0%)",
+                  background: "linear-gradient(135deg, #4a7ef9ef 0%)",
                 }}
               >
                 New Expense
@@ -648,18 +649,24 @@ export default function ExpenseIndex() {
                               width: 40,
                               height: 40,
                               background:
-                                "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                                "linear-gradient(135deg, #617effff 0%, #c68effff 100%)",
                               mr: 2,
                               fontSize: "1rem",
                               fontWeight: 600,
                             }}
                           >
                             {currentUser.name
-                              ? currentUser.name
-                                  .split(" ")
-                                  .map((n) => n[0])
-                                  .join("")
-                                  .toUpperCase()
+                              ? (() => {
+                                  const parts = currentUser.name
+                                    .trim()
+                                    .split(/\s+/);
+                                  return (
+                                    parts[0][0] +
+                                    (parts.length > 1
+                                      ? parts[parts.length - 1][0]
+                                      : "")
+                                  ).toUpperCase();
+                                })()
                               : "E"}
                           </Avatar>
                           <Box>
@@ -667,7 +674,7 @@ export default function ExpenseIndex() {
                               variant="subtitle1"
                               sx={{
                                 fontWeight: 600,
-                                color: "text.primary",
+                                color: "",
                                 lineHeight: 1.2,
                                 textTransform: "capitalize",
                               }}
@@ -717,20 +724,22 @@ export default function ExpenseIndex() {
                     sx={{
                       width: 36,
                       height: 36,
+                      bgcolor: "#ffffff",
+                      color: "#000000",
                       ml: 2,
-                      fontSize: "0.875rem",
+                      fontSize: "0.9rem",
                       fontWeight: 600,
-                      cursor: "pointer",
-                      transition: "all 0.2s ease",
-                      boxShadow: "rgba(0, 0, 0, 0.15) 0px 2px 4px 0px inset",
+                      boxShadow: "rgba(0, 0, 0, 0.2) 0px 2px 4px 0px inset",
                     }}
                   >
                     {currentUser.name
-                      ? currentUser.name
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")
-                          .toUpperCase()
+                      ? (() => {
+                          const parts = currentUser.name.trim().split(/\s+/);
+                          return (
+                            parts[0][0] +
+                            (parts.length > 1 ? parts[parts.length - 1][0] : "")
+                          ).toUpperCase();
+                        })()
                       : "E"}
                   </Avatar>
                 </Tooltip>
@@ -1570,6 +1579,26 @@ export default function ExpenseIndex() {
 
               <DialogContent sx={{ pt: "20px !important" }}>
                 <Grid container spacing={3}>
+                  {/* Rejection Comments */}
+                  {selectedExpense.adminComments &&
+                    selectedExpense.status === "rejected" && (
+                      <Grid item xs={12}>
+                        <Alert
+                          severity="error"
+                          sx={{
+                            borderRadius: "8px",
+                            border: "1px solid #fee2e2",
+                          }}
+                        >
+                          <Typography variant="subtitle2" gutterBottom>
+                            Rejection Reason:
+                          </Typography>
+                          <Typography variant="body2">
+                            {selectedExpense.adminComments}
+                          </Typography>
+                        </Alert>
+                      </Grid>
+                    )}
                   <Grid item xs={12} sm={6}>
                     <FormControl fullWidth>
                       <InputLabel>Expense Type</InputLabel>
@@ -1672,7 +1701,7 @@ export default function ExpenseIndex() {
                       }}
                     />
                   </Grid>
-                   <Grid item xs={12}>
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Purpose"
@@ -1690,7 +1719,7 @@ export default function ExpenseIndex() {
                       }}
                     />
                   </Grid>
-                   <Grid item xs={12}>
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Attendees"
@@ -1907,27 +1936,6 @@ export default function ExpenseIndex() {
                       </CardContent>
                     </Card>
                   </Grid>
-
-                  {/* Rejection Comments */}
-                  {selectedExpense.adminComments &&
-                    selectedExpense.status === "rejected" && (
-                      <Grid item xs={12}>
-                        <Alert
-                          severity="error"
-                          sx={{
-                            borderRadius: "8px",
-                            border: "1px solid #fee2e2",
-                          }}
-                        >
-                          <Typography variant="subtitle2" gutterBottom>
-                            Rejection Reason:
-                          </Typography>
-                          <Typography variant="body2">
-                            {selectedExpense.adminComments}
-                          </Typography>
-                        </Alert>
-                      </Grid>
-                    )}
                 </Grid>
               </DialogContent>
 

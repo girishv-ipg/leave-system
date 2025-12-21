@@ -2553,6 +2553,20 @@ export default function AdminExpenses() {
 
               <DialogContent sx={{ pt: "20px !important" }}>
                 <Grid container spacing={3}>
+                  {/* Rejection Comments Display */}
+                  {selectedExpense.adminComments &&
+                    selectedExpense.status === "rejected" && (
+                      <Grid item xs={12}>
+                        <Alert severity="error" sx={{ borderRadius: "8px" }}>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Rejection Reason:
+                          </Typography>
+                          <Typography variant="body2">
+                            {selectedExpense.adminComments}
+                          </Typography>
+                        </Alert>
+                      </Grid>
+                    )}
                   <Grid item xs={12} sm={6}>
                     <FormControl fullWidth>
                       <InputLabel>Expense Type</InputLabel>
@@ -2643,7 +2657,7 @@ export default function AdminExpenses() {
                       }}
                     />
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Purpose"
@@ -2659,7 +2673,7 @@ export default function AdminExpenses() {
                       }}
                     />
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Attendees"
@@ -2827,21 +2841,6 @@ export default function AdminExpenses() {
                       </CardContent>
                     </Card>
                   </Grid>
-
-                  {/* Rejection Comments Display */}
-                  {selectedExpense.adminComments &&
-                    selectedExpense.status === "rejected" && (
-                      <Grid item xs={12}>
-                        <Alert severity="error" sx={{ borderRadius: "8px" }}>
-                          <Typography variant="subtitle2" gutterBottom>
-                            Rejection Reason:
-                          </Typography>
-                          <Typography variant="body2">
-                            {selectedExpense.adminComments}
-                          </Typography>
-                        </Alert>
-                      </Grid>
-                    )}
 
                   {/* Warning about re-approval */}
                   <Grid item xs={12}>
