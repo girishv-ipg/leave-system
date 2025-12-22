@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const { create } = require("./user");
 
 const expensesSchema = new mongoose.Schema({
   expenseType: {

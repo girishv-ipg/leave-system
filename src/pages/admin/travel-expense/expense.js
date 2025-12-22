@@ -18,6 +18,7 @@ import {
   Logout,
   MoreVert,
   PendingActions,
+  Person,
   Receipt,
   RequestQuote,
   Schedule,
@@ -110,6 +111,8 @@ export default function AdminExpenses() {
     attendees: "",
   });
   const [newFile, setNewFile] = useState(null);
+  //state for tracking manage expenses
+  const [myExpenses, setMyExpenses] = useState([]);
 
   // Add these helper functions before the return statement
 
@@ -519,7 +522,7 @@ export default function AdminExpenses() {
       return [
         {
           value: "managerApproved",
-          label: "Pending Review", // Changed from "Manager Approved" to "Pending Review" for Finance
+          label: "Pending Review",
           icon: <Schedule />,
           color: "warning",
         },
@@ -536,8 +539,43 @@ export default function AdminExpenses() {
           color: "error",
         },
       ];
+    } else if (currentUser?.role === "manager") {
+      // Manager tabs with "My Expenses" tab
+      return [
+        { value: "all", label: "All", icon: <Assessment />, color: "primary" },
+        {
+          value: "myExpenses", // NEW TAB
+          label: "My Expenses",
+          icon: <Person />,
+          color: "secondary",
+        },
+        {
+          value: "pending",
+          label: "Pending",
+          icon: <Schedule />,
+          color: "warning",
+        },
+        {
+          value: "managerApproved",
+          label: "Manager Approved",
+          icon: <SupervisorAccount />,
+          color: "info",
+        },
+        {
+          value: "approved",
+          label: "Fully Approved",
+          icon: <CheckCircle />,
+          color: "success",
+        },
+        {
+          value: "rejected",
+          label: "Rejected",
+          icon: <Cancel />,
+          color: "error",
+        },
+      ];
     } else {
-      // Default tabs for admin/manager
+      // Default tabs for admin
       return [
         { value: "all", label: "All", icon: <Assessment />, color: "primary" },
         {
@@ -580,14 +618,25 @@ export default function AdminExpenses() {
         return;
       }
 
-      // API call to new endpoint
+      // API call to get all expenses
       const response = await axiosInstance.get("/expenses", {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      // Transform response to match frontend format
       let expensesData = response?.data?.data || [];
 
+      // If "My Expenses" tab is selected, filter by current user
+      //NOTE - this is now handled server-side
+      if (status === "myExpenses") {
+        const myExpensesData = expensesData.filter(
+          (exp) => exp.employeeId === currentUser?._id
+        );
+        setBulkSubmissions(myExpensesData);
+        setMyExpenses(myExpensesData); // Store separately for reference
+        return;
+      }
+
+      // Handle other status filters
       switch (status) {
         case "pending":
           expensesData = expensesData.filter((exp) => exp.status === "pending");
@@ -616,10 +665,7 @@ export default function AdminExpenses() {
 
       // If we don't have all data yet, fetch it for stats calculation
       if (allExpensesData.length === 0) {
-        const allDataResponse = await axiosInstance.get("/expenses", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setAllExpensesData(allDataResponse?.data?.data || []);
+        setAllExpensesData(response?.data?.data || []);
       }
     } catch (error) {
       console.error("Error fetching expenses:", error);
@@ -830,10 +876,19 @@ export default function AdminExpenses() {
   const [allExpensesData, setAllExpensesData] = useState([]);
 
   const calculateTotals = () => {
-    // Use allExpensesData instead of currently filtered bulkSubmissions
-    const allExpenses = allExpensesData.flatMap((submission) =>
+    // If on "My Expenses" tab, calculate totals only for user's expenses
+    let dataToCalculate = allExpensesData;
+
+    if (activeTab === "myExpenses" && currentUser?._id) {
+      dataToCalculate = allExpensesData.filter(
+        (exp) => exp.employeeId === currentUser._id
+      );
+    }
+
+    const allExpenses = dataToCalculate.flatMap((submission) =>
       Array.isArray(submission.expenses) ? submission.expenses : []
     );
+
     return allExpenses.reduce(
       (acc, expense) => {
         acc.total += parseFloat(expense.amount) || 0;
@@ -918,12 +973,15 @@ export default function AdminExpenses() {
     const hasAnyFilter =
       normalize(filters.name) || filters.year || filters.month || filters.date;
 
-    if (!hasAnyFilter) return bulkSubmissions;
+    // Determine base data: if "myExpenses" tab, use only user's expenses
+    let baseData = bulkSubmissions;
+
+    if (!hasAnyFilter) return baseData;
 
     const nameNeedle = normalize(filters.name);
     const specificDate = filters.date || ""; // yyyy-mm-dd
 
-    return bulkSubmissions
+    return baseData
       .map((submission) => {
         // Name filter: matches employeeName
         const nameOk = nameNeedle
@@ -942,7 +1000,7 @@ export default function AdminExpenses() {
             return true;
           }
 
-          // year/month match on either start OR end date (common UX expectation)
+          // year/month match on either start OR end date
           const yearOk =
             matchesYear(start, filters.year) || matchesYear(end, filters.year);
           const monthOk =
@@ -1257,7 +1315,7 @@ export default function AdminExpenses() {
 
         {/* Main Content Card */}
         <Card
-          elevation={0}
+          elevation={1}
           sx={{
             borderRadius: "12px",
             overflow: "hidden",
@@ -1267,7 +1325,7 @@ export default function AdminExpenses() {
             display: "flex",
             flexDirection: "column",
             minHeight: "400px",
-            maxHeight: { xs: "70vh", sm: "75vh", md: "80vh", lg: "85vh" },
+            maxHeight: { xs: "55vh", sm: "65vh", md: "70vh", lg: "77vh" },
           }}
         >
           {/* Tabs + Filters in one row */}
@@ -1353,6 +1411,45 @@ export default function AdminExpenses() {
             {loading ? (
               <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
                 <CircularProgress size={40} />
+              </Box>
+            ) : displayedSubmissions.length === 0 ? (
+              <Box sx={{ textAlign: "center", py: 8 }}>
+                <PendingActions
+                  sx={{ fontSize: 64, color: "grey.300", mb: 2 }}
+                />
+                <Typography variant="h6" color="text.secondary" gutterBottom>
+                  No expense submissions found
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {
+                     activeTab === "all" || activeTab === "myExpenses" 
+                    ? "No expense submissions to display"
+                    : activeTab === "managerApproved" &&
+                      currentUser?.role === "finance"
+                    ? "No pending review expense submissions to display"
+                    : `No ${activeTab} expense submissions to display`}
+                </Typography>
+                {activeTab === "myExpenses" && (
+                  <Button
+                    variant="contained"
+                    startIcon={<Receipt />}
+                    onClick={handleCreateExpense}
+                    sx={{
+                      mt: 3,
+                      borderRadius: "8px",
+                      fontWeight: 600,
+                      //FIXME - update gradient colors
+                      background:
+                        "linear-gradient(135deg, #4f98f7ff 0%, #96cff5ff 100%)",
+                      "&:hover": {
+                        transform: "translateY(-1px)",
+                        boxShadow: "0 8px 20px rgba(102, 126, 234, 0.4)",
+                      },
+                    }}
+                  >
+                    Create an Expense
+                  </Button>
+                )}
               </Box>
             ) : displayedSubmissions.length === 0 ? (
               <Box sx={{ textAlign: "center", py: 8 }}>
@@ -1493,6 +1590,24 @@ export default function AdminExpenses() {
                                     {submission.employeeCode}
                                   </Typography>
                                 )}
+
+                                {/* "My Expense" Chip */}
+                                {activeTab!=="myExpenses" && submission.employeeId === currentUser?._id && (
+                                  <Chip
+                                    label="My Expense"
+                                    size="small"
+                                    sx={{
+                                      backgroundColor:
+                                        "rgba(102, 126, 234, 0.1)",
+                                      color: "#5d76e6ff",
+                                      border:
+                                        "1px solid rgba(102, 126, 234, 0.3)",
+                                      fontWeight: 600,
+                                      fontSize: "0.7rem",
+                                    }}
+                                  />
+                                )}
+
                                 {/* Status Chips */}
                                 <Box
                                   sx={{
