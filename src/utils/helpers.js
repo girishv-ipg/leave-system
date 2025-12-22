@@ -1,24 +1,29 @@
+// helper.js
+
 import axios from "axios";
 
-// Create an Axios instance
 const axiosInstance = axios.create({
   baseURL: `http://${process.env.NEXT_PUBLIC_API_HOST}:4000`,
   timeout: 50000,
 });
 
-// Add a request interceptor to set Content-Type for JSON requests only
+// request interceptor
 axiosInstance.interceptors.request.use(
   (config) => {
-    // Only set application/json for requests that aren't FormData
+    // attach token if available
+    const token = localStorage.getItem("token");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    // set JSON content-type only for non-FormData
     if (!(config.data instanceof FormData)) {
       config.headers["Content-Type"] = "application/json";
     }
-    // For FormData, let the browser set the Content-Type with boundary
+
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 export default axiosInstance;

@@ -56,6 +56,7 @@ export default function BulkExpenseEntry() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [draftSaved, setDraftSaved] = useState(false);
   const [userInfo, setUserInfo] = useState({
     name: "John Doe",
     empId: "EMP001",
@@ -93,36 +94,51 @@ export default function BulkExpenseEntry() {
     },
   ]);
 
-  // Check for edit mode on component mount
+  // load draft expenses when page opens
   useEffect(() => {
-    const editData = localStorage.getItem("editExpense");
-    if (editData) {
+    const fetchDraft = async () => {
       try {
-        const expense = JSON.parse(editData);
-        setIsEditMode(true);
-        setEditExpenseData(expense);
-
-        // Set up single expense for editing
-        setExpenses([
-          {
-            id: expense.id || 1,
-            expenseType: expense.expenseType,
-            amount: expense.amount.toString(),
-            description: expense.description,
-            travelStartDate: expense.travelStartDate,
-            travelEndDate: expense.travelEndDate,
-            file: null,
-            fileName: expense.fileName || "",
-            existingFile: !!expense.fileName,
-          },
-        ]);
-
-        // Clean up localStorage
-        localStorage.removeItem("editExpense");
-      } catch (error) {
-        localStorage.removeItem("editExpense");
+        const token = localStorage.getItem("token");
+      if (!token) {
+        setError("Please login first");
+        return;
       }
-    }
+        // fetch saved draft from backend
+        const res = await axiosInstance.get("/expenses/draft");
+        if (res.data?.data?.expenses?.length) {
+          setExpenses(
+            res.data.data.expenses.map((exp) => ({
+              // unique id for frontend rendering
+              id: Date.now() + Math.random(),
+
+              // map backend fields
+              expenseType: exp.expenseType,
+              amount: exp.amount?.toString() || "",
+              description: exp.description || "",
+              attendees: exp.attendees || "",
+              purpose: exp.purpose || "",
+
+              // convert Date -> yyyy-mm-dd (for input[type="date"])
+              travelStartDate: exp.startDate
+                ? new Date(exp.startDate).toISOString().split("T")[0]
+                : "",
+              travelEndDate: exp.endDate
+                ? new Date(exp.endDate).toISOString().split("T")[0]
+                : "",
+
+              // drafts don’t restore files (optional)
+              file: null,
+              fileName: "",
+            }))
+          );
+        }
+      } catch (err) {
+        // no draft exists → ignore
+        console.log("No draft found");
+      }
+    };
+
+    fetchDraft();
   }, []);
 
   // Load user info from localStorage or API on component mount
@@ -192,102 +208,6 @@ export default function BulkExpenseEntry() {
       }
     }
     return true;
-  };
-
-  const handleEditSubmit = async () => {
-    setLoading(true);
-    setError("");
-    setSuccess("");
-
-    if (!validateExpenses()) {
-      setError("Please fill in all required fields and ensure dates are valid");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        setError("Authentication required. Please login again.");
-        setLoading(false);
-        return;
-      }
-
-      const expense = expenses[0]; // Only one expense in edit mode
-      const formData = new FormData();
-
-      // Add expense data
-      formData.append("expenseType", expense.expenseType);
-      formData.append("amount", parseFloat(expense.amount));
-      formData.append("description", expense.description);
-      formData.append("startDate", expense.travelStartDate);
-      formData.append("endDate", expense.travelEndDate);
-
-      // Add file if present
-      if (expense.file) {
-        formData.append("file", expense.file);
-      }
-
-      // Add bulk submission info if editing from bulk submission
-      if (editExpenseData.bulkSubmissionId) {
-        formData.append("bulkSubmissionId", editExpenseData.bulkSubmissionId);
-        formData.append(
-          "bulkSubmissionIndex",
-          editExpenseData.bulkSubmissionIndex
-        );
-      }
-
-      const response = await axiosInstance.put(
-        `/expenses/${editExpenseData.id}`,
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data",
-          },
-          timeout: 30000, // 30 seconds timeout
-        }
-      );
-
-      const result = response.data;
-
-      if (result.message) {
-        setSuccess(result.message || "Expense updated successfully");
-
-        // Redirect to index page after 2 seconds
-        setTimeout(() => {
-          router.push("/employee/travel-expense");
-        }, 2000);
-      } else {
-        setError(result.error || "Failed to update expense");
-      }
-    } catch (error) {
-      if (error.response) {
-        const status = error.response.status;
-        const errorMessage =
-          error.response.data?.error ||
-          error.response.data?.message ||
-          "Server error occurred";
-
-        if (status === 413) {
-          setError("Request too large. Please reduce file size.");
-        } else if (status === 401) {
-          setError("Session expired. Please login again.");
-        } else {
-          setError(errorMessage);
-        }
-      } else if (error.request) {
-        setError("Network error. Please check your connection and try again.");
-      } else if (error.code === "ECONNABORTED") {
-        setError("Request timeout. Please try again with a smaller file.");
-      } else {
-        setError(
-          error.message || "Something went wrong while updating expense"
-        );
-      }
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleSubmitAll = async () => {
@@ -401,6 +321,43 @@ export default function BulkExpenseEntry() {
     }
   };
 
+  // Save Draft button handler
+const handleSaveDraft = async () => {
+  try {
+    const formData = new FormData();
+
+    const draftExpenses = expenses.map((expense, index) => {
+      const data = {
+        expenseType: expense.expenseType,
+        amount: expense.amount,
+        description: expense.description,
+        startDate: expense.travelStartDate,
+        endDate: expense.travelEndDate,
+        attendees: expense.attendees,
+        purpose: expense.purpose,
+        hasFile: !!expense.file,
+        fileIndex: expense.file ? index : null,
+      };
+
+      // attach file if exists
+      if (expense.file) {
+        formData.append("files", expense.file);
+      }
+
+      return data;
+    });
+
+    formData.append("expenses", JSON.stringify(draftExpenses));
+
+    await axiosInstance.post("/expenses/draft", formData);
+
+    setSuccess("Draft saved successfully");
+  } catch (err) {
+    setError("Failed to save draft");
+  }
+};
+
+
   const FileUploadCell = ({ expense }) => {
     const fileSize = expense.file?.size / 1024 / 1000;
     const hasExistingFile = expense.existingFile && !expense.file;
@@ -453,15 +410,21 @@ export default function BulkExpenseEntry() {
           />
           {hasNewFile ? (
             <Tooltip
-              title={fileSize <= 1 ? `${expense.fileName} (${(expense.file.size / 1024).toFixed(
-                1
-              )} KB)` : ""}
+              title={
+                fileSize <= 1
+                  ? `${expense.fileName} (${(expense.file.size / 1024).toFixed(
+                      1
+                    )} KB)`
+                  : ""
+              }
             >
               <Chip
                 label={
                   expense.fileName.length > 15 && fileSize <= 1
                     ? `${expense.fileName.substring(0, 15)}...`
-                    : fileSize <= 1 ? expense.fileName : "Please upload file less than 1MB"
+                    : fileSize <= 1
+                    ? expense.fileName
+                    : "Please upload file less than 1MB"
                 }
                 color={fileSize <= 1 ? "success" : "error"}
                 size="small"
@@ -624,7 +587,7 @@ export default function BulkExpenseEntry() {
               </Alert>
             </Fade>
           )}
-          {success && (
+          {success && !draftSaved && (
             <Fade in>
               <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>
                 {success}
@@ -635,14 +598,23 @@ export default function BulkExpenseEntry() {
               </Alert>
             </Fade>
           )}
+          {success && draftSaved && (
+            <Fade in>
+              <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>
+                {success}
+              </Alert>
+            </Fade>
+          )}
 
           {/* Expenses Table */}
-          <Card
-            elevation={3}
-            sx={{ borderRadius: 3, overflow: "hidden", mb: 3 }}
-          >
+          <Card elevation={3} sx={{ borderRadius: 3, mb: 3 }}>
             <CardContent sx={{ p: 0 }}>
-              <TableContainer sx={{ maxHeight: 600 }}>
+              <TableContainer
+                sx={{
+                  minHeight: "400px",
+                  maxHeight: { xs: "55vh", sm: "65vh", md: "70vh", lg: "52vh" },
+                }}
+              >
                 <Table stickyHeader>
                   <TableHead>
                     <TableRow>
@@ -788,7 +760,7 @@ export default function BulkExpenseEntry() {
                       )}
                     </TableRow>
                   </TableHead>
-                  <TableBody>
+                  <TableBody sx={{ minHeight: "400px", overflow: "auto" }}>
                     {expenses.map((expense, index) => (
                       <TableRow key={expense.id} hover>
                         <TableCell
@@ -887,7 +859,7 @@ export default function BulkExpenseEntry() {
                             InputLabelProps={{ shrink: true }}
                           />
                         </TableCell>
-                         <TableCell>
+                        <TableCell>
                           <TextField
                             value={expense.purpose}
                             onChange={(e) =>
@@ -1010,6 +982,24 @@ export default function BulkExpenseEntry() {
               </Paper>
             </Box>
             <Box>
+              {/* Save Draft Button */}
+              <Button
+                variant="outlined"
+                startIcon={<Save />}
+                onClick={handleSaveDraft}
+                disabled={loading}
+                sx={{
+                  mr: 2,
+                  py: 1.5,
+                  px: 2,
+                  borderRadius: 2,
+                  fontSize: "0.7rem",
+                  fontWeight: 600,
+                }}
+              >
+                Save
+              </Button>
+
               {/* Submit Button */}
               <Button
                 onClick={isEditMode ? handleEditSubmit : handleSubmitAll}
@@ -1037,13 +1027,7 @@ export default function BulkExpenseEntry() {
                   },
                 }}
               >
-                {loading
-                  ? isEditMode
-                    ? "Updating..."
-                    : "Submitting..."
-                  : isEditMode
-                  ? "Update Expense"
-                  : `Submit All (${expenses.length})`}
+                {loading ? "Submitting..." : ` Submit All (${expenses.length})`}
               </Button>
             </Box>
           </Box>
@@ -1094,7 +1078,8 @@ export default function BulkExpenseEntry() {
                     Fill in all the required fields for each expense entry
                   </Typography>
                   <Typography component="li" variant="body2" sx={{ mb: 1 }}>
-                    Upload receipts in JPG, PNG, JPEG or PDF format (max 1MB each)
+                    Upload receipts in JPG, PNG, JPEG or PDF format (max 1MB
+                    each)
                   </Typography>
                   <Typography component="li" variant="body2" sx={{ mb: 1 }}>
                     Ensure travel end date is not before start date

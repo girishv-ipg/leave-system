@@ -626,7 +626,6 @@ export default function AdminExpenses() {
       let expensesData = response?.data?.data || [];
 
       // If "My Expenses" tab is selected, filter by current user
-      //NOTE - this is now handled server-side
       if (status === "myExpenses") {
         const myExpensesData = expensesData.filter(
           (exp) => exp.employeeId === currentUser?._id
@@ -1438,7 +1437,6 @@ export default function AdminExpenses() {
                       mt: 3,
                       borderRadius: "8px",
                       fontWeight: 600,
-                      //FIXME - update gradient colors
                       background:
                         "linear-gradient(135deg, #4f98f7ff 0%, #96cff5ff 100%)",
                       "&:hover": {

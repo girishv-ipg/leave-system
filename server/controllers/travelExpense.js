@@ -79,6 +79,12 @@ const createExpense = async (req, res) => {
       expenses,
     });
 
+    // delete draft after final submission
+    await Expense.deleteMany({
+      employeeId: req.user.userId,
+      isDraft: true,
+    });
+
     await newExpense.save();
 
     res.status(201).json({
@@ -563,14 +569,88 @@ const getExpenseFile = async (req, res) => {
   }
 };
 
+// Save expenses as draft (temporary storage)
+const saveDraftExpense = async (req, res) => {
+  try {
+    let expenses = req.body.expenses;
+
+    // parse expenses if sent as string
+    if (typeof expenses === "string") {
+      expenses = JSON.parse(expenses);
+    }
+
+    // attach uploaded files to expenses
+    if (req.files && req.files.length > 0) {
+      req.files.forEach((file, index) => {
+        const fileIndex = expenses[index]?.fileIndex ?? index;
+
+        if (!expenses[fileIndex].files) {
+          expenses[fileIndex].files = [];
+        }
+
+        expenses[fileIndex].files.push({
+          name: file.originalname,
+          type: file.mimetype,
+          data: file.buffer.toString("base64"),
+        });
+      });
+    }
+
+    // delete previous draft
+    await Expense.deleteMany({
+      employeeId: req.user.userId,
+      isDraft: true,
+    });
+
+    const totalAmount = expenses.reduce(
+      (sum, e) => sum + Number(e.amount || 0),
+      0
+    );
+
+    const draft = new Expense({
+      employeeId: req.user.userId,
+      expenses,
+      totalAmount,
+      isDraft: true,
+    });
+
+    await draft.save();
+
+    res.status(200).json({ message: "Draft saved successfully" });
+  } catch (error) {
+    console.error("Save draft error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+
+
+// Get saved draft for logged-in user
+const getDraftExpense = async (req, res) => {
+  try {
+    const draft = await Expense.findOne({
+      employeeId: req.user.userId,
+      isDraft: true,
+    }).lean();
+
+    res.status(200).json({
+      data: draft || null,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch draft" });
+  }
+};
+
 module.exports = {
   createExpense,
-  getEmployeeExpenses,
-  getAllExpenses,
-  getExpenseById,
-  updateExpense,
-  managerReviewExpense,
-  financeReviewExpense,
   deleteExpense,
+  financeReviewExpense,
+  getAllExpenses,
+  getDraftExpense,
+  getEmployeeExpenses,
+  getExpenseById,
   getExpenseFile,
+  managerReviewExpense,
+  saveDraftExpense,
+  updateExpense
 };

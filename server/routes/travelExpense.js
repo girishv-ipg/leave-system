@@ -26,6 +26,21 @@ const upload = multer({
   },
 });
 
+// Draft routes
+router.get(
+  "/expenses/draft",
+  authenticate,
+  expenseController.getDraftExpense
+);
+
+router.post(
+  "/expenses/draft",
+  authenticate,
+  upload.any(),
+  expenseController.saveDraftExpense
+);
+
+
 // Employee routes
 router.post(
   "/expenses",
@@ -68,5 +83,7 @@ router.patch(
   authenticate,
   expenseController.financeReviewExpense
 );
+
+
 
 module.exports = router;
