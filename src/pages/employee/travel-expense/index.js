@@ -15,7 +15,6 @@ import {
   FilePresent,
   Home,
   Logout,
-  Person,
   Receipt,
   Schedule,
   SupervisorAccount,
@@ -84,15 +83,13 @@ export default function ExpenseIndex() {
     attendees: "",
   });
 
-  // get current month name
-  const currentMonth = new Date().getMonth() + 1;
 
   const [newFile, setNewFile] = useState(null);
-  const [filterType, setFilterType] = useState("month");
+  const [filterType, setFilterType] = useState("date");
   const [filters, setFilters] = useState({
     year: "",
-    month: currentMonth,
-    date: "",
+    month: "",
+    date: new Date().toISOString().split('T')[0],
   });
 
   const router = useRouter();
@@ -143,70 +140,66 @@ export default function ExpenseIndex() {
     if (!month || !d) return true;
     const nd = new Date(d);
     if (isNaN(nd)) return false;
-    return nd.getMonth() + 1 === Number(month); // 0-based in JS
+    return nd.getMonth() + 1 === Number(month); 
   };
 
-  // ✅ combine status-tab filtering + date filtering
+  // combine status-tab filtering + date filtering
   useEffect(() => {
-    // base list from tab
-    let base =
-      activeTab === "all"
-        ? submissions
-        : submissions
-            .map((submission) => ({
-              ...submission,
-              expenses: submission.expenses.filter(
-                (expense) => expense.status === activeTab
-              ),
-            }))
-            .filter((submission) => submission.expenses.length > 0);
+    // Filter by status/tab
+    let base = activeTab === "all"
+      ? submissions
+      : submissions
+          .map((submission) => ({
+            ...submission,
+            expenses: submission.expenses.filter(
+              (expense) => expense.status === activeTab
+            ),
+          }))
+          .filter((submission) => submission.expenses.length > 0);
 
     const { year, month, date } = filters;
 
-    // if no extra filters, done
+    // If no filters, show all
     if (!year && !month && !date) {
       setFilteredSubmissions(base);
       return;
     }
 
-    // apply year/month/date on each submission's expenses
+    // Apply date filters
     const filtered = base
       .map((submission) => {
-        const exp = (submission.expenses || []).filter((e) => {
-          const start = e.startDate ? new Date(e.startDate) : null;
-          const end = e.endDate ? new Date(e.endDate) : null;
+        const matchingExpenses = submission.expenses.filter((expense) => {
+          const start = expense.startDate ? new Date(expense.startDate) : null;
+          const end = expense.endDate ? new Date(expense.endDate) : null;
 
-          // if the user applied any date filters but expense has invalid dates → drop it
-          if (
-            (year || month || date) &&
-            (!start || !end || isNaN(start) || isNaN(end))
-          ) {
+          if (!start || !end || isNaN(start) || isNaN(end)) {
             return false;
           }
 
-          // year/month: accept if either start or end matches
-          if (year) {
-            const yOk = matchesYear(start, year) || matchesYear(end, year);
-            if (!yOk) return false;
-          }
-          if (month) {
-            const mOk = matchesMonth(start, month) || matchesMonth(end, month);
-            if (!mOk) return false;
+          if (year && !(matchesYear(start, year) || matchesYear(end, year))) {
+            return false;
           }
 
-          // specific date within [start, end] inclusive
+          if (month && !(matchesMonth(start, month) || matchesMonth(end, month))) {
+            return false;
+          }
+
           if (date) {
-            const d = new Date(date);
-            if (isNaN(d)) return false;
-            if (!(d >= start && d <= end)) return false;
+            const filterDate = new Date(date + 'T00:00:00');
+            const startDate = new Date(start.toISOString().split('T')[0] + 'T00:00:00');
+            const endDate = new Date(end.toISOString().split('T')[0] + 'T00:00:00');
+            
+            if (!(filterDate >= startDate && filterDate <= endDate)) {
+              return false;
+            }
           }
 
           return true;
         });
 
-        return { ...submission, expenses: exp };
+        return { ...submission, expenses: matchingExpenses };
       })
-      .filter((s) => s.expenses.length > 0);
+      .filter((submission) => submission.expenses.length > 0);
 
     setFilteredSubmissions(filtered);
   }, [activeTab, submissions, filters]);
@@ -234,21 +227,6 @@ export default function ExpenseIndex() {
   };
 
   // Filter submissions based on active tab
-  useEffect(() => {
-    if (activeTab === "all") {
-      setFilteredSubmissions(submissions);
-    } else {
-      const filtered = submissions
-        .map((submission) => ({
-          ...submission,
-          expenses: submission.expenses.filter(
-            (expense) => expense.status === activeTab
-          ),
-        }))
-        .filter((submission) => submission.expenses.length > 0);
-      setFilteredSubmissions(filtered);
-    }
-  }, [activeTab, submissions]);
 
   const getStatusColor = (status) => {
     const colors = {
@@ -303,8 +281,8 @@ export default function ExpenseIndex() {
       expenseType: expense.expenseType || "",
       amount: expense.amount.toString(),
       description: expense.description,
-      startDate: expense.startDate,
-      endDate: expense.endDate,
+      startDate: new Date(expense.startDate),
+      endDate: new Date(expense.endDate),
       purpose: expense.purpose || "",
       attendees: expense.attendees || "",
     });
@@ -417,6 +395,7 @@ export default function ExpenseIndex() {
       startDate: "",
     });
   };
+
   const handleViewDocument = async (expense) => {
     try {
       if (!expense.files || expense.files.length === 0) {
@@ -425,19 +404,267 @@ export default function ExpenseIndex() {
       }
 
       const file = expense.files[0];
-      const byteCharacters = atob(file.data);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: file.type });
 
+      if (!file.data) {
+        throw new Error("File data is missing");
+      }
+
+      // Clean base64 data
+      let base64Data = file.data.trim().replace(/\s+/g, "");
+
+      // Remove data URL prefix if present
+      if (base64Data.includes(",")) {
+        base64Data = base64Data.split(",")[1];
+      }
+
+      // Try to decode once
+      let binaryString = atob(base64Data);
+    
+      // Check if it's double-encoded
+      const firstChars = binaryString.substring(0, 20);
+      const isBase64Pattern = /^[A-Za-z0-9+/=]+$/.test(firstChars);
+
+      // Get file signature bytes for detection
+      const getSignature = (str) => {
+        return Array.from(str.substring(0, 8))
+          .map((c) =>
+            c.charCodeAt(0).toString(16).padStart(2, "0").toUpperCase()
+          )
+          .join(" ");
+      };
+
+      const firstSignature = getSignature(binaryString);
+
+      // Check for valid file signatures
+      const isValidSignature = () => {
+        const sig = binaryString.substring(0, 4);
+        const bytes = Array.from(sig).map((c) => c.charCodeAt(0));
+
+        // PDF: %PDF (25 50 44 46)
+        if (sig.startsWith("%PDF")) {
+          return true;
+        }
+
+        // PNG: 89 50 4E 47
+        if (
+          bytes[0] === 0x89 &&
+          bytes[1] === 0x50 &&
+          bytes[2] === 0x4e &&
+          bytes[3] === 0x47
+        ) {
+          return true;
+        }
+
+        // JPEG/JPG: FF D8 FF (all JPEG files start with these bytes)
+        if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+          return true;
+        }
+
+        console.warn("✗ No valid signature detected");
+        return false;
+      };
+
+      // If it looks like base64 and doesn't have valid signature, try decoding again
+      if (isBase64Pattern && !isValidSignature()) {
+        console.warn("⚠️ Detected double-encoded base64! Decoding again...");
+        try {
+          binaryString = atob(binaryString);
+        } catch (e) {
+          console.error("Failed to decode second time:", e);
+          throw new Error("File is corrupted or improperly encoded");
+        }
+      }
+
+      // Verify file signature matches claimed type
+      const verifyFileType = () => {
+        const bytes = Array.from(binaryString.substring(0, 4)).map((c) =>
+          c.charCodeAt(0)
+        );
+        const detectedType = { valid: false, name: "unknown" };
+
+        // Check actual file signature
+        if (binaryString.startsWith("%PDF")) {
+          detectedType.valid = true;
+          detectedType.name = "PDF";
+        } else if (
+          bytes[0] === 0x89 &&
+          bytes[1] === 0x50 &&
+          bytes[2] === 0x4e &&
+          bytes[3] === 0x47
+        ) {
+          detectedType.valid = true;
+          detectedType.name = "PNG";
+        } else if (
+          bytes[0] === 0xff &&
+          bytes[1] === 0xd8 &&
+          bytes[2] === 0xff
+        ) {
+          detectedType.valid = true;
+          detectedType.name = "JPEG/JPG";
+        }
+
+        // Normalize MIME type for comparison
+        const normalizedMimeType = file.type.toLowerCase();
+
+        // Verify type matches
+        if (
+          normalizedMimeType === "application/pdf" &&
+          detectedType.name !== "PDF"
+        ) {
+          console.error(
+            "MIME type mismatch: Expected PDF but got",
+            detectedType.name
+          );
+          return false;
+        }
+
+        if (normalizedMimeType === "image/png" && detectedType.name !== "PNG") {
+          console.error(
+            "MIME type mismatch: Expected PNG but got",
+            detectedType.name
+          );
+          return false;
+        }
+
+        // Handle both image/jpeg and image/jpg
+        if (
+          (normalizedMimeType === "image/jpeg" ||
+            normalizedMimeType === "image/jpg") &&
+          detectedType.name !== "JPEG/JPG"
+        ) {
+          console.error(
+            "MIME type mismatch: Expected JPEG/JPG but got",
+            detectedType.name
+          );
+          return false;
+        }
+
+        if (!detectedType.valid) {
+          console.error("Invalid or unknown file signature");
+          return false;
+        }
+
+        return true;
+      };
+
+      const isValid = verifyFileType();
+      if (!isValid) {
+        throw new Error(
+          `File appears to be corrupted. The file signature doesn't match the expected type (${file.type})`
+        );
+      }
+
+      // Convert to Uint8Array
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      // Determine correct MIME type (normalize jpg to jpeg)
+      let mimeType = file.type || "application/octet-stream";
+      if (mimeType === "image/jpg") {
+        mimeType = "image/jpeg"; // Normalize to standard MIME type
+      }
+
+      const blob = new Blob([bytes], { type: mimeType });
+
+      if (blob.size === 0) {
+        throw new Error("Generated blob is empty");
+      }
+
+      // Create URL
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      // Handle different file types
+      if (mimeType.startsWith("image/")) {
+        // For images (including JPG, JPEG, PNG), display in a styled page
+        const newWindow = window.open("", "_blank");
+        if (newWindow) {
+          newWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>${file.name}</title>
+              <style>
+                * {
+                  margin: 0;
+                  padding: 0;
+                  box-sizing: border-box;
+                }
+                body {
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                  min-height: 100vh;
+                  background: #1a1a1a;
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                }
+                .container {
+                  max-width: 95vw;
+                  max-height: 95vh;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  gap: 20px;
+                  padding: 20px;
+                }
+                .filename {
+                  color: #fff;
+                  font-size: 16px;
+                  font-weight: 500;
+                  text-align: center;
+                  word-break: break-all;
+                }
+                img {
+                  max-width: 100%;
+                  max-height: 85vh;
+                  object-fit: contain;
+                  border-radius: 8px;
+                  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+                }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="filename">${file.name}</div>
+                <img src="${url}" alt="${file.name}" />
+              </div>
+            </body>
+          </html>
+        `);
+        } else {
+          // Popup blocked - download instead
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = file.name || "image";
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          alert("Popup blocked. File download started instead.");
+        }
+      } else {
+        // For PDFs, open directly
+        const newWindow = window.open(url, "_blank");
+
+        if (!newWindow) {
+          // Popup blocked - download instead
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = file.name || "document.pdf";
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          alert("Popup blocked. File download started instead.");
+        }
+      }
+
+      // Cleanup after 30 seconds
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
     } catch (error) {
-      alert("Error viewing document: " + error.message);
+      console.error("Error viewing document:", error);
+      alert(
+        `Error viewing document: ${error.message}\n\nThe file may be corrupted. Please try re-uploading it.`
+      );
     }
   };
 
@@ -449,7 +676,6 @@ export default function ExpenseIndex() {
       editFormData.description &&
       editFormData.startDate &&
       editFormData.endDate &&
-      editFormData.startDate <= editFormData.endDate &&
       editFormData.purpose &&
       editFormData.attendees &&
       new Date(editFormData.startDate) <= new Date(editFormData.endDate)
@@ -953,13 +1179,13 @@ export default function ExpenseIndex() {
                       borderRadius: "8px",
                       fontWeight: 600,
                       transition: "all 0.2s ease",
-                      background: "linear-gradient(135deg, #3367e09c 0%)",
+                      background: "linear-gradient(135deg, #4a7ef9ef 0%)",
                       "&:hover": {
                         transform: "translateY(-1px)",
                       },
                     }}
                   >
-                    Create First Expense
+                    Create New Expense
                   </Button>
                 )}
               </CardContent>
@@ -1617,6 +1843,9 @@ export default function ExpenseIndex() {
                         {[
                           "travel",
                           "accommodation",
+                          "lunch",
+                          "breakfast",
+                          "dinner",
                           "meals",
                           "transport",
                           "office_supplies",
@@ -1672,7 +1901,11 @@ export default function ExpenseIndex() {
                       fullWidth
                       label="Travel Start Date"
                       type="date"
-                      value={editFormData.startDate}
+                      value={
+                        new Date(editFormData.startDate)
+                          .toISOString()
+                          .split("T")[0]
+                      }
                       onChange={(e) =>
                         handleFormChange("startDate", e.target.value)
                       }
@@ -1689,7 +1922,11 @@ export default function ExpenseIndex() {
                       fullWidth
                       label="Travel End Date"
                       type="date"
-                      value={editFormData.endDate}
+                      value={
+                        new Date(editFormData.endDate)
+                          .toISOString()
+                          .split("T")[0]
+                      }
                       onChange={(e) =>
                         handleFormChange("endDate", e.target.value)
                       }
@@ -1739,7 +1976,7 @@ export default function ExpenseIndex() {
                   </Grid>
 
                   {/* Current File Display */}
-                  {selectedExpense.fileName && !newFile && (
+                  {selectedExpense.files.name && !newFile && (
                     <Grid item xs={12}>
                       <Card
                         sx={{
@@ -1766,7 +2003,7 @@ export default function ExpenseIndex() {
                                 boxShadow: "0 4px 12px rgba(0, 0, 0, 0.16)",
                               }}
                             >
-                              {getFileIcon(selectedExpense.fileName)}
+                              {getFileIcon(selectedExpense.files.name)}
                             </Avatar>
                             <Box sx={{ flexGrow: 1 }}>
                               <Typography
@@ -1782,7 +2019,7 @@ export default function ExpenseIndex() {
                                   textTransform: "uppercase",
                                 }}
                               >
-                                {selectedExpense.fileName}
+                                {selectedExpense.files.name}
                               </Typography>
                             </Box>
                             <Button
@@ -1813,13 +2050,21 @@ export default function ExpenseIndex() {
                       elevation={newFile ? 1 : 0}
                       sx={{
                         border: newFile
-                          ? "2px solid #22c55e"
+                          ? `${newFile.size <= 1048576 ? "#22c55e" : "#dc2626"}`
                           : "2px dashed #cbd5e1",
-                        bgcolor: newFile ? "#f0fdf4" : "#fafbfc",
+                        bgcolor: newFile
+                          ? newFile.size <= 1048576
+                            ? "#f0fdf4"
+                            : "#fdf0f1ff"
+                          : "#fafbfc",
                         borderRadius: "12px",
                         transition: "all 0.3s ease",
                         "&:hover": {
-                          borderColor: newFile ? "#16a34a" : "#94a3b8",
+                          borderColor: newFile
+                            ? newFile.size <= 1048576
+                              ? "#16a34a"
+                              : "#dc2626"
+                            : "#94a3b8",
                           transform: "translateY(-1px)",
                         },
                       }}
@@ -1831,7 +2076,7 @@ export default function ExpenseIndex() {
                               sx={{
                                 fontSize: 48,
                                 color: "text.secondary",
-                                mb: 2,
+                                mb: 1,
                                 transition: "transform 0.2s ease",
                                 "&:hover": {
                                   transform: "scale(1.1)",
@@ -1839,7 +2084,7 @@ export default function ExpenseIndex() {
                               }}
                             />
                             <Typography variant="h6" sx={{ mb: 1 }}>
-                              {selectedExpense.fileName
+                              {selectedExpense.files?.name
                                 ? "Upload New Receipt"
                                 : "Upload Receipt"}
                             </Typography>
@@ -1848,8 +2093,7 @@ export default function ExpenseIndex() {
                               color="text.secondary"
                               sx={{ mb: 2 }}
                             >
-                              Choose a file to upload (JPEG, PNG, PDF • Max
-                              10MB)
+                              Choose a file to upload (JPEG, PNG, PDF • Max 1MB)
                             </Typography>
                             <Button
                               component="label"
@@ -1880,22 +2124,36 @@ export default function ExpenseIndex() {
                               gap: 2,
                             }}
                           >
-                            <Avatar sx={{ bgcolor: "#22c55e", color: "white" }}>
+                            <Avatar
+                              sx={{
+                                bgcolor:
+                                  newFile.size > 1048576
+                                    ? "#dc2626"
+                                    : "#22c55e",
+                                color: "white",
+                              }}
+                            >
                               {getFileIcon(newFile.name)}
                             </Avatar>
                             <Box sx={{ flexGrow: 1 }}>
                               <Typography
                                 variant="subtitle1"
-                                color="#22c55e"
+                                color={
+                                  newFile.size > 1048576 ? "#dc2626" : "#22c55e"
+                                }
                                 fontWeight={600}
                               >
-                                {newFile.name}
+                                {newFile.size <= 1048576
+                                  ? newFile.name
+                                  : "File size exceeds 1MB"}
                               </Typography>
                               <Typography
                                 variant="body2"
                                 color="text.secondary"
                               >
-                                {formatFileSize(newFile.size)}
+                                {newFile.size <= 1048576
+                                  ? formatFileSize(newFile.size)
+                                  : ""}
                               </Typography>
                             </Box>
                             <Button

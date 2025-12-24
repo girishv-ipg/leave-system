@@ -51,3 +51,45 @@ export const holidays = [
   "2025-11-01",
   "2025-12-25",
 ];
+
+export const base64ToFile = (base64, fileName, mimeType) => {
+  try {
+    
+    if (!base64) {
+      throw new Error('No base64 data provided');
+    }
+    
+    // Remove data URL prefix if present
+    let base64Data = base64;
+    if (base64Data.includes(',')) {
+      base64Data = base64Data.split(',')[1];
+    }
+    
+    // Remove any whitespace or newlines
+    base64Data = base64Data.replace(/\s/g, '');
+    
+    // Validate base64 format
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(base64Data)) {
+      throw new Error('Invalid base64 string format');
+    }
+    
+    const byteCharacters = atob(base64Data);
+    const byteArrays = [];
+    
+    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+      const slice = byteCharacters.slice(offset, offset + 512);
+      const byteNumbers = new Array(slice.length);
+      for (let i = 0; i < slice.length; i++) {
+        byteNumbers[i] = slice.charCodeAt(i);
+      }
+      byteArrays.push(new Uint8Array(byteNumbers));
+    }
+    
+    const blob = new Blob(byteArrays, { type: mimeType || 'application/octet-stream' });
+    const file = new File([blob], fileName, { type: mimeType || 'application/octet-stream' });
+    
+    return file;
+  } catch (error) {
+    throw new Error('Failed to decode document: ' + error.message);
+  }
+};

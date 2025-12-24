@@ -1,4 +1,4 @@
-// src/utils/ExpenseFiltersEmployee.jsx  (same path you’re importing from)
+// src/utils/ExpenseFiltersEmployee.jsx
 
 import {
   Box,
@@ -29,9 +29,13 @@ const MONTHS = [
 ];
 
 export default function ExpenseFiltersMenuForEmployee({
-  filterType,
+  filterType = "date",
   setFilterType,
-  filters,
+  filters = { 
+    year: "", 
+    month: "", 
+    date: new Date().toISOString().split('T')[0] // Set current date by default
+  },
   setFilters,
   compact = false,
 }) {
@@ -41,8 +45,8 @@ export default function ExpenseFiltersMenuForEmployee({
   const set = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
 
   const clearAll = () => {
-    setFilters({ year: "", month: "", date: "" });
-    setFilterType("year");
+    setFilters({ year: "", month: "", date: new Date().toISOString().split('T')[0] });
+    setFilterType("date"); // Changed from "month" to "date"
   };
 
   return (
@@ -73,9 +77,9 @@ export default function ExpenseFiltersMenuForEmployee({
                 }));
               }}
             >
-              <MenuItem value="year">Year</MenuItem>
-              <MenuItem value="month">Month</MenuItem>
               <MenuItem value="date">Date</MenuItem>
+              <MenuItem value="month">Month</MenuItem>
+              <MenuItem value="year">Year</MenuItem>
             </Select>
           </FormControl>
 

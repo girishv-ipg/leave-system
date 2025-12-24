@@ -43,13 +43,12 @@ import {
   Typography,
 } from "@mui/material";
 import React, { useEffect, useState } from "react";
+import axiosInstance, { base64ToFile } from "@/utils/helpers";
 
 import { BusinessCenter } from "@mui/icons-material";
 import { Home } from "@mui/icons-material";
 import { Logout } from "@mui/icons-material";
 import { PersonAdd } from "@mui/icons-material";
-import axios from "axios";
-import axiosInstance from "@/utils/helpers";
 import { useRouter } from "next/navigation";
 
 export default function BulkExpenseEntry() {
@@ -64,15 +63,14 @@ export default function BulkExpenseEntry() {
 
   // Edit mode state
   const [isEditMode, setIsEditMode] = useState(false);
-  const [editExpenseData, setEditExpenseData] = useState(null);
 
   const router = useRouter();
 
   const expenseTypes = [
     { value: "travel", label: "Travel" },
-    { value: "Breakfast", label: "Breakfast" },
-    { value: "Lunch", label: "Lunch" },
-    { value: "Dinner", label: "Dinner" },
+    { value: "breakfast", label: "Breakfast" },
+    { value: "lunch", label: "Lunch" },
+    { value: "dinner", label: "Dinner" },
     { value: "accommodation", label: "Accommodation" },
     { value: "transportation", label: "Transportation" },
     { value: "fuel", label: "Fuel" },
@@ -95,51 +93,63 @@ export default function BulkExpenseEntry() {
   ]);
 
   // load draft expenses when page opens
-  useEffect(() => {
-    const fetchDraft = async () => {
-      try {
-        const token = localStorage.getItem("token");
-      if (!token) {
-        setError("Please login first");
-        return;
-      }
-        // fetch saved draft from backend
-        const res = await axiosInstance.get("/expenses/draft");
-        if (res.data?.data?.expenses?.length) {
-          setExpenses(
-            res.data.data.expenses.map((exp) => ({
-              // unique id for frontend rendering
-              id: Date.now() + Math.random(),
+useEffect(() => {
+  const fetchDraft = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
 
-              // map backend fields
-              expenseType: exp.expenseType,
-              amount: exp.amount?.toString() || "",
-              description: exp.description || "",
-              attendees: exp.attendees || "",
-              purpose: exp.purpose || "",
+      const res = await axiosInstance.get("/expenses/draft");
+      const draftExpenses = res.data?.data?.expenses || [];
 
-              // convert Date -> yyyy-mm-dd (for input[type="date"])
-              travelStartDate: exp.startDate
-                ? new Date(exp.startDate).toISOString().split("T")[0]
-                : "",
-              travelEndDate: exp.endDate
-                ? new Date(exp.endDate).toISOString().split("T")[0]
-                : "",
+      if (!draftExpenses.length) return;
+      
+      setExpenses(
+        draftExpenses.map((exp, index) => {
+          // restore first file if exists
+          let restoredFile = null;
+          let restoredFileName = "";
 
-              // drafts don’t restore files (optional)
-              file: null,
-              fileName: "",
-            }))
-          );
-        }
-      } catch (err) {
-        // no draft exists → ignore
-        console.log("No draft found");
-      }
-    };
+          if (exp.files?.length) {
+            const file = exp.files[0];
+            
+            try {
+              restoredFile = base64ToFile(
+                file.data,
+                file.name,
+                file.type
+              );
+              restoredFileName = file.name;
+            } catch (err) {
+              console.error(`Failed to restore file ${index}:`, err);
+            }
+          }
 
-    fetchDraft();
-  }, []);
+          return {
+            id: Date.now() + Math.random(),
+            expenseType: exp.expenseType,
+            amount: exp.amount?.toString() || "",
+            description: exp.description || "",
+            attendees: exp.attendees || "",
+            purpose: exp.purpose || "",
+            travelStartDate: exp.startDate
+              ? new Date(exp.startDate).toISOString().split("T")[0]
+              : "",
+            travelEndDate: exp.endDate
+              ? new Date(exp.endDate).toISOString().split("T")[0]
+              : "",
+            file: restoredFile,
+            fileName: restoredFileName,
+          };
+        })
+      );
+    } catch (err) {
+      console.error("Error loading draft:", err);
+    }
+  };
+
+  fetchDraft();
+}, []);
 
   // Load user info from localStorage or API on component mount
   useEffect(() => {
@@ -352,6 +362,8 @@ const handleSaveDraft = async () => {
     await axiosInstance.post("/expenses/draft", formData);
 
     setSuccess("Draft saved successfully");
+    setDraftSaved(true);
+    setTimeout(() => { setSuccess(""); setDraftSaved(false); }, 3000);
   } catch (err) {
     setError("Failed to save draft");
   }
@@ -527,9 +539,6 @@ const handleSaveDraft = async () => {
                 >
                   Submit Travel Expenses
                 </Typography>
-                {/* <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                  Track your expense submissions
-                </Typography> */}
               </Box>
             </Box>
 

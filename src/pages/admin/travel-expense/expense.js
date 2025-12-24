@@ -492,7 +492,7 @@ export default function AdminExpenses() {
     }
   };
 
-  const [filterType, setFilterType] = useState("month");
+  const [filterType, setFilterType] = useState("date");
 
   // get current month name
   const currentMonth = new Date().getMonth() + 1;
@@ -501,8 +501,8 @@ export default function AdminExpenses() {
   const [filters, setFilters] = useState({
     name: "",
     year: "",
-    month: currentMonth,
-    date: "",
+    month: "",
+    date: new Date().toISOString().split('T')[0],
   });
 
   // Get current user info
@@ -1420,8 +1420,7 @@ export default function AdminExpenses() {
                   No expense submissions found
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {
-                     activeTab === "all" || activeTab === "myExpenses" 
+                  {activeTab === "all" || activeTab === "myExpenses"
                     ? "No expense submissions to display"
                     : activeTab === "managerApproved" &&
                       currentUser?.role === "finance"
@@ -1590,21 +1589,23 @@ export default function AdminExpenses() {
                                 )}
 
                                 {/* "My Expense" Chip */}
-                                {activeTab!=="myExpenses" && submission.employeeId === currentUser?._id && (
-                                  <Chip
-                                    label="My Expense"
-                                    size="small"
-                                    sx={{
-                                      backgroundColor:
-                                        "rgba(102, 126, 234, 0.1)",
-                                      color: "#5d76e6ff",
-                                      border:
-                                        "1px solid rgba(102, 126, 234, 0.3)",
-                                      fontWeight: 600,
-                                      fontSize: "0.7rem",
-                                    }}
-                                  />
-                                )}
+                                {activeTab !== "myExpenses" &&
+                                  submission.employeeId ===
+                                    currentUser?._id && (
+                                    <Chip
+                                      label="My Expense"
+                                      size="small"
+                                      sx={{
+                                        backgroundColor:
+                                          "rgba(102, 126, 234, 0.1)",
+                                        color: "#5d76e6ff",
+                                        border:
+                                          "1px solid rgba(102, 126, 234, 0.3)",
+                                        fontWeight: 600,
+                                        fontSize: "0.7rem",
+                                      }}
+                                    />
+                                  )}
 
                                 {/* Status Chips */}
                                 <Box
