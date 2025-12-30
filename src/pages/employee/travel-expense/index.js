@@ -39,7 +39,7 @@ import {
   updateExpense,
 } from "../../../services/expenseService";
 
-import { EMPLOYEE_TABS } from "../../../constants/expenseConstant";
+import { EMPLOYEE_TABS } from "../../../constants/expenseConstants";
 import EditExpenseDialog from "../../../components/EditExpenseDialog";
 import ExpenseFiltersMenuForEmployee from "../../../utils/ExpenseFiltersEmployee";
 import SubmissionCard from "../../../components/SubmissionCard";
@@ -107,7 +107,6 @@ export default function ExpenseIndex() {
       setLoading(true);
       setError(null);
       const data = await fetchEmployeeExpenses();
-      console.log("expenses1 => ", data);
       setSubmissions(data);
     } catch (err) {
       console.error("Error fetching expenses:", err);
@@ -174,7 +173,6 @@ export default function ExpenseIndex() {
         return { ...submission, expenses: matchingExpenses };
       })
       .filter((submission) => submission.expenses.length > 0);
-console.log("filtere =? ", filtered)
     setFilteredSubmissions(filtered);
   }, [activeTab, submissions, filters]);
 
@@ -344,6 +342,7 @@ console.log("filtere =? ", filtered)
                 <IconButton
                   onClick={() => router.push("/main")}
                   sx={{
+                    transition: "all 0.2s ease",
                     color: "#000000ff",
                     "&:hover": { backgroundColor: "rgba(59, 130, 246, 0.2)" },
                   }}
@@ -359,6 +358,7 @@ console.log("filtere =? ", filtered)
                     router.push("/login");
                   }}
                   sx={{
+                    transition: "all 0.2s ease",
                     color: "#000000ff",
                     "&:hover": { backgroundColor: "rgba(239, 68, 68, 0.2)" },
                   }}

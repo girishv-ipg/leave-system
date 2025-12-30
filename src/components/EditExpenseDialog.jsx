@@ -21,14 +21,10 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import {
-  CloudUpload,
-  Delete,
-  Edit,
-} from "@mui/icons-material";
+import { CloudUpload, Delete, Edit } from "@mui/icons-material";
 import { formatFileSize, getFileIcon } from "../utils/expenseHelpers";
 
-import { EXPENSE_TYPES } from "../constants/expenseConstant";
+import { EXPENSE_TYPES } from "../constants/expenseConstants";
 
 export default function EditExpenseDialog({
   open,
@@ -101,9 +97,7 @@ export default function EditExpenseDialog({
                 <Typography variant="subtitle2" gutterBottom>
                   Rejection Reason:
                 </Typography>
-                <Typography variant="body2">
-                  {expense.adminComments}
-                </Typography>
+                <Typography variant="body2">{expense.adminComments}</Typography>
               </Alert>
             </Grid>
           )}
@@ -212,7 +206,7 @@ export default function EditExpenseDialog({
           </Grid>
 
           {/* Current File Display */}
-          {expense.files?.name && !file && (
+          {expense.files[0]?.name && !file && (
             <Grid item xs={12}>
               <Card
                 sx={{
@@ -223,15 +217,17 @@ export default function EditExpenseDialog({
               >
                 <CardContent sx={{ p: 2 }}>
                   <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                    <Avatar sx={{ bgcolor: "primary.main" }}>
+                    <Avatar
+                      sx={{ bgcolor: "#eaebecff", color: "text.secondary" }}
+                    >
                       {getFileIcon(expense.files.name, IconComponents)}
                     </Avatar>
                     <Box sx={{ flexGrow: 1 }}>
                       <Typography variant="subtitle2" color="text.secondary">
-                        Current Receipt
+                        Current Receipt :
                       </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 550 }}>
-                        {expense.files.name}
+                      <Typography variant="subtitle2" sx={{ fontWeight: 500 }}>
+                        {expense.files[0].name}
                       </Typography>
                     </Box>
                     <Button
@@ -255,8 +251,8 @@ export default function EditExpenseDialog({
               sx={{
                 border: file
                   ? file.size <= 1048576
-                    ? "2px solid #22c55e"
-                    : "2px solid #dc2626"
+                    ? " #22c55e"
+                    : "#dc2626"
                   : "2px dashed #cbd5e1",
                 bgcolor: file
                   ? file.size <= 1048576
@@ -303,8 +299,7 @@ export default function EditExpenseDialog({
                   <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                     <Avatar
                       sx={{
-                        bgcolor:
-                          file.size > 1048576 ? "#dc2626" : "#22c55e",
+                        bgcolor: file.size > 1048576 ? "#dc2626" : "#22c55e",
                         color: "white",
                       }}
                     >
@@ -314,7 +309,7 @@ export default function EditExpenseDialog({
                       <Typography
                         variant="subtitle1"
                         color={file.size > 1048576 ? "#dc2626" : "#22c55e"}
-                        fontWeight={600}
+                        fontWeight={550}
                       >
                         {file.size <= 1048576
                           ? file.name
@@ -340,7 +335,10 @@ export default function EditExpenseDialog({
                         onChange={onFileChange}
                       />
                     </Button>
-                    <IconButton onClick={onFileClear} sx={{ color: "error.main" }}>
+                    <IconButton
+                      onClick={onFileClear}
+                      sx={{ color: "error.main" }}
+                    >
                       <Delete />
                     </IconButton>
                   </Box>
@@ -355,13 +353,14 @@ export default function EditExpenseDialog({
         <Button
           onClick={onClose}
           disabled={loading}
-          sx={{ borderRadius: "8px" }}
+          sx={{ borderRadius: "8px", color:"#000000ff" }}
         >
           Cancel
         </Button>
         <Button
           onClick={onSave}
           variant="contained"
+          color="warning"
           disabled={!isFormValid() || loading}
           startIcon={loading ? <CircularProgress size={16} /> : <Edit />}
           sx={{

@@ -81,7 +81,7 @@ const createExpense = async (req, res) => {
       (sum, exp) => sum + Number(exp.amount),
       0
     );
-    
+
     const newExpense = new Expense({
       employeeId: req.user.userId,
       createdAt: new Date(),
@@ -135,7 +135,10 @@ const createExpense = async (req, res) => {
 // Get all expenses for the logged-in employee
 const getEmployeeExpenses = async (req, res) => {
   try {
-    const expenses = await Expense.find({ employeeId: req.user.userId })
+    const expenses = await Expense.find({
+      employeeId: req.user.userId,
+      isDraft: false, // Filter out drafts
+    })
       .populate("expenses.approvedBy", "name")
       .sort({ createdAt: -1 });
 
@@ -171,7 +174,7 @@ const getEmployeeExpenses = async (req, res) => {
 const getAllExpenses = async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
-    let query = {};
+    let query = { isDraft: false }; // Always filter out drafts
 
     if (user.role === "manager") {
       const departmentEmployees = await User.find({
@@ -603,7 +606,7 @@ const saveDraftExpense = async (req, res) => {
         expenses[fileIndex].files.push({
           name: file.originalname,
           type: file.mimetype,
-          data: file.buffer.toString("base64"),
+          data: file.buffer,
         });
       });
     }
@@ -635,8 +638,6 @@ const saveDraftExpense = async (req, res) => {
   }
 };
 
-
-
 // Get saved draft for logged-in user
 const getDraftExpense = async (req, res) => {
   try {
@@ -664,5 +665,5 @@ module.exports = {
   getExpenseFile,
   managerReviewExpense,
   saveDraftExpense,
-  updateExpense
+  updateExpense,
 };

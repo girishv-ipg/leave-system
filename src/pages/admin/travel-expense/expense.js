@@ -61,7 +61,7 @@ import EditExpenseDialog from "@/components/EditExpenseDialog";
 import ExpenseFiltersMenu from "@/utils/ExpenseFiltersOthers";
 import SubmissionCard from "../../../components/SubmissionCard";
 import SummaryStats from "../../../components/SummaryStats";
-import { getTabsByRole } from "../../../constants/expenseConstant";
+import { getTabsByRole } from "../../../constants/expenseConstants";
 import { useDocumentHandler } from "../../../hooks/useDocumentHandler";
 import { useFileUpload } from "../../../hooks/useFileUpload";
 import { useRouter } from "next/navigation";
