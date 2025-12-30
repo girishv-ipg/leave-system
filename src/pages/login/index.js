@@ -23,16 +23,6 @@ const LoginPage = () => {
   const [serverError, setServerError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("user"));
-
-    if (["admin", "manager", "hr", "md"].includes(user?.role)) {
-      router.replace("/admin/requests");
-    } else if (user?.role === "employee") {
-      router.replace("/employee/requestLeave");
-    }
-  }, [router]);
-
   const handleChange = (e) => {
     setErrors({});
     setServerError("");

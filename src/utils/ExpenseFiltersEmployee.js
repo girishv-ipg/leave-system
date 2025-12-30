@@ -29,12 +29,12 @@ const MONTHS = [
 ];
 
 export default function ExpenseFiltersMenuForEmployee({
-  filterType = "date",
+  filterType = "",
   setFilterType,
   filters = { 
     year: "", 
-    month: "", 
-    date: new Date().toISOString().split('T')[0] // Set current date by default
+    month: "",
+    date: ""
   },
   setFilters,
   compact = false,
@@ -45,8 +45,8 @@ export default function ExpenseFiltersMenuForEmployee({
   const set = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
 
   const clearAll = () => {
-    setFilters({ year: "", month: "", date: new Date().toISOString().split('T')[0] });
-    setFilterType("date"); // Changed from "month" to "date"
+    setFilters({ year: "", month: "", date: ""});
+    setFilterType("month"); 
   };
 
   return (

@@ -1,6 +1,7 @@
 // ./server/controllers/travelExpense.js
 const { Expense } = require("../models/travelExpense");
 const User = require("../models/user");
+const { validateFileStructure } = require("../utils/helpers");
 
 // Submit a new expense
 const createExpense = async (req, res) => {
@@ -30,14 +31,24 @@ const createExpense = async (req, res) => {
             expenses[fileIndex].files = [];
           }
 
-          // Convert buffer to base64
-          const base64Data = file.buffer.toString("base64");
+          // Validate file structure based on magic numbers
+          const isValid = validateFileStructure(file.buffer, file.mimetype);
+          if (!isValid) {
+            throw new Error(`Invalid file structure for: ${file.originalname}`);
+          }
 
-          // Create clean file object
+          // Normalize MIME type
+          let mimeType = file.mimetype;
+          if (mimeType === "image/jpg") {
+            mimeType = "image/jpeg";
+          }
+
+          // Store the Buffer directly - MongoDB will handle the binary storage
           const fileObj = {
-            name: String(file.originalname),
-            type: String(file.mimetype),
-            data: String(base64Data),
+            name: file.originalname,
+            type: mimeType,
+            data: file.buffer, // Store as Buffer directly
+            size: file.size,
           };
 
           expenses[fileIndex].files.push(fileObj);
@@ -51,12 +62,10 @@ const createExpense = async (req, res) => {
       if (expense.files && Array.isArray(expense.files)) {
         for (let file of expense.files) {
           if (file.data) {
-            // Check base64 size (rough estimate: 1.33x original size)
-            const sizeInBytes = (file.data.length * 3) / 4;
+            const sizeInBytes = Buffer.byteLength(file.data);
             const sizeInMB = sizeInBytes / (1024 * 1024);
 
             if (sizeInMB > 1) {
-              // Limit to 1MB per file
               return res.status(400).json({
                 error: `File ${file.name} is too large (${sizeInMB.toFixed(
                   2
@@ -72,6 +81,7 @@ const createExpense = async (req, res) => {
       (sum, exp) => sum + Number(exp.amount),
       0
     );
+    
     const newExpense = new Expense({
       employeeId: req.user.userId,
       createdAt: new Date(),
@@ -79,7 +89,7 @@ const createExpense = async (req, res) => {
       expenses,
     });
 
-    // delete draft after final submission
+    // Delete draft after final submission
     await Expense.deleteMany({
       employeeId: req.user.userId,
       isDraft: true,
@@ -92,6 +102,8 @@ const createExpense = async (req, res) => {
       data: newExpense,
     });
   } catch (error) {
+    console.error("Error creating expense:", error);
+
     // Handle specific MongoDB errors
     if (
       error.name === "DocumentTooLargeError" ||
